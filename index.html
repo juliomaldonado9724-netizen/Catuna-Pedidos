@@ -202,6 +202,7 @@
       const [custPhone, setCustPhone] = useState('');
       const [custAddress, setCustAddress] = useState('');
       const [custCoords, setCustCoords] = useState(null);
+      const [paymentMethod, setPaymentMethod] = useState('Efectivo'); // NUEVO: MÉTODO DE PAGO (Efectivo / Transferencia)
       const [isGettingLocation, setIsGettingLocation] = useState(false);
       const [lastOrderSent, setLastOrderSent] = useState(null);
 
@@ -579,6 +580,7 @@
               storeName: item.storeName,
               storeAddress: item.storeAddress,
               storePhone: item.storePhone,
+              alias: stores.find(s => s.id === item.storeId)?.alias || '',
               items: []
             };
           }
@@ -600,6 +602,7 @@
             customerPhone: custPhone,
             address: custAddress,
             coords: custCoords || null,
+            paymentMethod: paymentMethod, // GUARDAR MÉTODO DE PAGO
             items: cart,
             deliveryFee: totalDeliveryFee,
             subtotal,
@@ -614,18 +617,18 @@
           storesList.forEach(store => {
             const storeItemsList = store.items.map(i => `• ${i.quantity} ${i.unit || 'Unid.'} x ${i.name} ($${Math.round(i.price * i.quantity)})`).join('%0A');
             const storeSubtotal = store.items.reduce((s, i) => s + (i.price * i.quantity), 0);
-            const msg = `🔔 *NUEVO PEDIDO MULTI-LOCAL - Catuna Pedidos*%0A%0A*Cliente:* ${encodeURIComponent(custName)}%0A*Tel:* ${encodeURIComponent(custPhone)}%0A*Dirección:* ${encodeURIComponent(custAddress)}%0A%0A*Tus productos en este pedido:*%0A${storeItemsList}%0A%0A*Subtotal a cobrar:* $${Math.round(storeSubtotal)}`;
+            const msg = `🔔 *NUEVO PEDIDO - Catuna Pedidos*%0A%0A*Cliente:* ${encodeURIComponent(custName)}%0A*Pago:* ${encodeURIComponent(paymentMethod)}%0A*Dirección:* ${encodeURIComponent(custAddress)}%0A%0A*Tus productos:*%0A${storeItemsList}%0A%0A*Subtotal:* $${Math.round(storeSubtotal)}`;
             
             if (store.storePhone) {
               window.open(`https://wa.me/549${store.storePhone}?text=${msg}`, '_blank');
             }
           });
 
-          setLastOrderSent({ storeName: storesList.map(s => s.name).join(', '), total: Math.round(subtotal + totalDeliveryFee) });
+          setLastOrderSent({ storeName: storesList.map(s => s.name).join(', '), total: Math.round(subtotal + totalDeliveryFee), paymentMethod, storesList });
           setCart([]);
           setIsCartOpen(false);
-          setCustName(''); setCustPhone(''); setCustAddress(''); setCustCoords(null);
-          alert("¡Pedido multi-local enviado con éxito! Se notificó a los comercios por WhatsApp.");
+          setCustName(''); setCustPhone(''); setCustAddress(''); setCustCoords(null); setPaymentMethod('Efectivo');
+          alert("¡Pedido enviado con éxito! Se notificó a los comercios.");
         } catch (err) {
           alert("Error al enviar pedido: " + err.message);
         }
@@ -711,8 +714,23 @@
 
                 {lastOrderSent && (
                   <div className="bg-green-50 border-2 border-green-500 p-3 rounded-lg text-center space-y-2 shadow-md">
-                    <p className="font-bold text-green-900 text-sm">✅ ¡Pedido multi-local realizado con éxito!</p>
-                    <p className="text-xs text-gray-600">Se notificó a los comercios involucrados por WhatsApp.</p>
+                    <p className="font-bold text-green-900 text-sm">✅ ¡Pedido realizado con éxito!</p>
+                    <p className="text-xs text-gray-600">Forma de pago elegida: <strong>{lastOrderSent.paymentMethod}</strong></p>
+                    {lastOrderSent.paymentMethod === 'Transferencia' && lastOrderSent.storesList && (
+                      <div className="bg-amber-50 border border-amber-200 p-2 rounded text-[11px] text-left space-y-1">
+                        <p className="font-bold text-amber-900">💳 Alias de los comercios para transferir:</p>
+                        {lastOrderSent.storesList.map((s, idx) => (
+                          <div key={idx} className="flex justify-between items-center border-b pb-1 last:border-b-0">
+                            <span><strong>{s.name}:</strong> <span className="font-mono font-bold select-all">{s.alias || 'Consultar al local'}</span></span>
+                            {s.phone && (
+                              <a href={`https://wa.me/549${s.phone}?text=Hola,%20te%20envío%20el%20comprobante%20de%20mi%20pedido%20en%20Catuna%20Pedidos:`} target="_blank" className="bg-green-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">
+                                💬 Enviar Comprobante
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <button onClick={() => setLastOrderSent(null)} className="text-[11px] text-gray-500 underline">Cerrar aviso</button>
                   </div>
                 )}
@@ -912,7 +930,7 @@
                         <button onClick={() => setIsCartOpen(false)} className="text-gray-400 font-bold text-sm p-1 hover:text-gray-600">✕</button>
                       </div>
 
-                      <div className="space-y-3 max-h-52 overflow-y-auto bg-gray-50 p-2 rounded-lg border">
+                      <div className="space-y-3 max-h-40 overflow-y-auto bg-gray-50 p-2 rounded-lg border">
                         {cart.map((item, idx) => (
                           <div key={idx} className="flex justify-between items-center bg-white p-2 rounded border text-xs shadow-sm">
                             <div className="flex-1 pr-2">
@@ -976,6 +994,25 @@
                             <p className="text-[10px] text-green-600 font-bold">✅ Ubicación GPS guardada correctamente.</p>
                           )}
                         </div>
+
+                        {/* SELECTOR DE MÉTODO DE PAGO */}
+                        <div className="bg-amber-50 border border-amber-300 p-2.5 rounded space-y-1.5">
+                          <label className="block text-xs font-bold text-amber-900">💵 Selecciona la Forma de Pago:</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setPaymentMethod('Efectivo')}
+                              className={`py-2 rounded font-bold text-xs border ${paymentMethod === 'Efectivo' ? 'bg-green-600 text-white border-green-700 shadow' : 'bg-white text-gray-700 border-gray-300'}`}>
+                              💵 Efectivo (al cadete)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPaymentMethod('Transferencia')}
+                              className={`py-2 rounded font-bold text-xs border ${paymentMethod === 'Transferencia' ? 'bg-blue-600 text-white border-blue-700 shadow' : 'bg-white text-gray-700 border-gray-300'}`}>
+                              💳 Transferencia (Mercado Pago)
+                            </button>
+                          </div>
+                        </div>
                         
                         <div className="flex gap-2 pt-2">
                           <button type="button" onClick={() => setIsCartOpen(false)} className="flex-1 bg-gray-300 text-gray-700 py-2 rounded font-bold text-xs">
@@ -1013,10 +1050,9 @@
                       <button onClick={()=>setLoggedStore(null)} className="text-red-600 font-bold underline">Salir</button>
                     </div>
 
-                    {/* AVISO DE COMISIÓN DOMINICAL PARA EL COMERCIO */}
                     <div className="border p-3 rounded bg-amber-50 border-amber-300 space-y-2 shadow-sm">
                       <div className="flex items-center gap-1.5 text-amber-900 font-extrabold text-sm">
-                        <span>📅</span> <span>Rendición de Comisión Dominical</span>
+                        <span>📅</span> <span>Rendición de Comisión Semanal (Domingos)</span>
                       </div>
                       <p className="text-amber-800 text-[11px]">
                         Recuerda que <strong>todos los domingos</strong> debes abonar el 10% de tus ventas acumuladas al Administrador mediante transferencia a su Alias.
@@ -1056,7 +1092,7 @@
 
                             <div className="bg-white p-2.5 rounded border flex justify-between items-center">
                               <div>
-                                <p className="text-xs text-amber-900 font-bold">Comisión 10% a abonar (Domingo):</p>
+                                <p className="text-xs text-amber-900 font-bold">Comisión 10% a abonar:</p>
                                 <p className="text-sm font-extrabold text-red-600">${commissionDue}</p>
                                 <p className="text-[10px] text-gray-500">Alias Admin: <span className="font-mono font-bold select-all">{ADMIN_PAYMENT_INFO.alias}</span></p>
                               </div>
@@ -1107,6 +1143,7 @@
                                   {o.status === 'pendiente' ? '⏳ Esperando Cadete' : '🛵 En Camino'}
                                 </span>
                               </div>
+                              <p className="text-gray-600"><strong>Forma de Pago:</strong> <span className="text-red-600 font-bold">{o.paymentMethod || 'Efectivo'}</span></p>
                               <p className="text-gray-600"><strong>Dirección:</strong> {o.address}</p>
                               
                               <div className="bg-gray-50 p-2 rounded text-[11px] border">
@@ -1118,37 +1155,14 @@
                                 ))}
                               </div>
 
-                              <div className="bg-yellow-50 border border-yellow-200 p-2 rounded space-y-1.5">
-                                <p className="font-bold text-yellow-900 text-[11px]">⏱️ Tiempo estimado de preparación:</p>
-                                <div className="flex gap-2 items-center">
-                                  <select 
-                                    value={orderPrepTimes[o.id] || o.prepTime || '15'}
-                                    onChange={(e) => setOrderPrepTimes({ ...orderPrepTimes, [o.id]: e.target.value })}
-                                    className="p-1 border rounded bg-white text-xs font-bold">
-                                    <option value="5">5 minutos</option>
-                                    <option value="10">10 minutos</option>
-                                    <option value="15">15 minutos</option>
-                                    <option value="20">20 minutos</option>
-                                    <option value="30">30 minutos</option>
-                                    <option value="45">45 minutos</option>
-                                    <option value="60">60 minutos</option>
-                                  </select>
-                                  <button 
-                                    onClick={() => handleSetPrepTime(o.id, o.customerPhone, o.customerName)}
-                                    className="bg-amber-600 text-white font-bold px-2 py-1 rounded text-[11px] shadow hover:bg-amber-700">
-                                    Guardar y Avisar
-                                  </button>
-                                </div>
-                              </div>
-
                               {assignedCadete ? (
                                 <div className="bg-blue-50 border border-blue-200 p-2 rounded space-y-2 mt-2">
                                   <p className="text-blue-900 font-bold">Cadete asignado: {assignedCadete.name} ({assignedCadete.vehicle})</p>
                                   <a 
-                                    href={`https://wa.me/549${assignedCadete.phone}?text=Hola%20${encodeURIComponent(assignedCadete.name)},%20el%20pedido%20de%20${encodeURIComponent(o.customerName)}%20ya%20está%20listo%20en%20el%20local.`}
+                                    href={`https://wa.me/549${assignedCadete.phone}?text=Hola%20${encodeURIComponent(assignedCadete.name)},%20el%20pedido%20de%20${encodeURIComponent(o.customerName)}%20ya%20está%20listo.`}
                                     target="_blank"
                                     className="block w-full bg-green-600 text-white text-center font-bold py-1.5 rounded shadow hover:bg-green-700">
-                                    💬 Avisar al Cadete que está listo
+                                    💬 Avisar al Cadete
                                   </a>
                                 </div>
                               ) : (
@@ -1293,6 +1307,10 @@
 
                               <p><strong>Cliente:</strong> {o.customerName}</p>
                               <p><strong>Dirección:</strong> {o.address} {o.coords && <span className="text-blue-600 font-bold">📡 (GPS Exacto)</span>}</p>
+                              <p className="bg-yellow-100 p-1.5 rounded font-bold text-gray-900">
+                                💳 Forma de Pago: <span className="text-red-600">{o.paymentMethod || 'Efectivo'}</span> 
+                                {o.paymentMethod === 'Efectivo' ? ` (Cobrar $${Math.round(o.total)} en mano)` : ' (Cliente ya transfirió al local)'}
+                              </p>
 
                               <div className="grid grid-cols-2 gap-2 pt-1">
                                 <a 
@@ -1374,7 +1392,7 @@
                             <div>
                               <p className="font-bold text-gray-800">{store.name}</p>
                               <p className="text-gray-600">Ventas: <strong>${Math.round(totalSales)}</strong></p>
-                              <p className="text-orange-700 font-bold">Comisión 10% (Domingo): ${commissionDue}</p>
+                              <p className="text-orange-700 font-bold">Comisión 10%: ${commissionDue}</p>
                             </div>
                             <button 
                               onClick={()=>handleResetStoreCommission(store.id)}
