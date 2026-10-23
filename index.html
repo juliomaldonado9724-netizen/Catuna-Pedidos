@@ -24,7 +24,6 @@
   <script type="text/babel">
     const { useState, useEffect } = React;
 
-    // CONFIGURACIÓN DE FIREBASE (Conectado a tu proyecto de Catuna)
     const firebaseConfig = {
       apiKey: "AIzaSyDVtOX-_9idM9YiNAem5fc1SiGZLjypJ-Y",
       authDomain: "catunapedidos.firebaseapp.com",
@@ -52,7 +51,6 @@
       const APP_FEE = 300; 
       const DELIVERY_FEE = 1500; 
 
-      // ESTADOS CONECTADOS A FIREBASE EN TIEMPO REAL
       const [stores, setStores] = useState([]);
       const [products, setProducts] = useState([]);
       const [cadetes, setCadetes] = useState([]);
@@ -122,7 +120,6 @@
       const [custAddress, setCustAddress] = useState('');
       const [lastOrderSent, setLastOrderSent] = useState(null);
 
-      // --- ACCIONES ADMIN ---
       const handleAdminLogin = (e) => {
         e.preventDefault();
         if (adminPass === 'Aithana2411') setIsAdminLogged(true);
@@ -133,18 +130,18 @@
         e.preventDefault();
         try {
           await db.collection('stores').add({
-            name: newStoreName, 
-            address: newStoreAddress, 
-            phone: newStorePhone,
-            alias: newStoreAlias,
-            titular: newStoreTitular,
+            name: newStoreName || '', 
+            address: newStoreAddress || '', 
+            phone: newStorePhone || '',
+            alias: newStoreAlias || '',
+            titular: newStoreTitular || '',
             hours: newStoreHours || '20:00 a 00:00 hs',
             isOpen: true,
-            user: newStoreUser, 
-            pass: newStorePass,
+            user: newStoreUser || '', 
+            pass: newStorePass || '',
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
-          setNewStoreName(''); setNewStoreAddress(''); setNewStorePhone(''); setNewStoreAlias(''); setNewStoreTitular(''); setNewStoreHours(''); setNewStoreUser(''); setNewStorePass('');
+          setNewStoreName(''); setNewStoreAddress(''); setNewStorePhone(''); setNewStoreAlias(''); setNewStoreTitular(''); setNewStoreHours('20:00 a 00:00 hs'); setNewStoreUser(''); setNewStorePass('');
           alert("Comercio registrado con éxito en la nube.");
         } catch (err) {
           alert("Error al registrar comercio: " + err.message);
@@ -155,16 +152,16 @@
         e.preventDefault();
         try {
           await db.collection('cadetes').add({
-            name: newCadeteName, 
-            phone: newCadetePhone, 
-            vehicle: newCadeteVehicle, 
-            user: newCadeteUser, 
-            pass: newCadetePass, 
+            name: newCadeteName || '', 
+            phone: newCadetePhone || '', 
+            vehicle: newCadeteVehicle || 'Moto', 
+            user: newCadeteUser || '', 
+            pass: newCadetePass || '', 
             balance: 0, 
             isOnline: true,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
-          setNewCadeteName(''); setNewCadetePhone(''); setNewCadeteUser(''); setNewCadetePass('');
+          setNewCadeteName(''); setNewCadetePhone(''); setNewCadeteUser(''); setNewCadetePass(''); setNewCadeteVehicle('Moto');
           alert("Cadete creado exitosamente en la nube.");
         } catch (err) {
           alert("Error al crear cadete: " + err.message);
@@ -181,7 +178,7 @@
 
         try {
           await db.collection('cadetes').doc(selectedCadeteId).update({
-            balance: (cadeteDoc.balance || 0) + amount
+            balance: (Number(cadeteDoc.balance) || 0) + amount
           });
           setRechargeAmount('');
           alert("¡Saldo acreditado correctamente en la nube!");
@@ -207,7 +204,6 @@
         }
       };
 
-      // --- ACCIONES COMERCIO ---
       const handleStoreLogin = (e) => {
         e.preventDefault();
         const found = stores.find(s => s.user === loginUser && s.pass === loginPass);
@@ -232,9 +228,9 @@
         try {
           await db.collection('products').add({
             storeId: loggedStore.id, 
-            name: prodName, 
-            price: Number(prodPrice), 
-            description: prodDesc, 
+            name: prodName || '', 
+            price: Number(prodPrice) || 0, 
+            description: prodDesc || '', 
             image: prodImg || 'https://via.placeholder.com/150',
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
@@ -255,7 +251,6 @@
         }
       };
 
-      // --- ACCIONES CADETE ---
       const handleCadeteLogin = (e) => {
         e.preventDefault();
         const found = cadetes.find(c => c.user === loginUser && c.pass === loginPass);
@@ -280,13 +275,13 @@
           alert("Estás desconectado. Debes ponerte en línea para aceptar viajes.");
           return;
         }
-        if ((loggedCadete.balance || 0) < APP_FEE) {
+        if ((Number(loggedCadete.balance) || 0) < APP_FEE) {
           alert(`Saldo insuficiente. Necesitas al menos $${APP_FEE} para tomar un viaje.`);
           return;
         }
 
         try {
-          const newBalance = loggedCadete.balance - APP_FEE;
+          const newBalance = (Number(loggedCadete.balance) || 0) - APP_FEE;
           await db.collection('cadetes').doc(loggedCadete.id).update({ balance: newBalance });
           await db.collection('orders').doc(orderId).update({ status: 'en_camino', cadeteId: loggedCadete.id });
           setLoggedCadete({ ...loggedCadete, balance: newBalance });
@@ -305,7 +300,6 @@
         }
       };
 
-      // --- ACCIONES CLIENTE ---
       const addToCart = (product, store) => {
         if (!store.isOpen) {
           alert("Este local está cerrado actualmente.");
@@ -332,9 +326,9 @@
             storeName: selectedStore.name,
             storeAddress: selectedStore.address,
             storePhone: selectedStore.phone,
-            customerName: custName,
-            customerPhone: custPhone,
-            address: custAddress,
+            customerName: custName || '',
+            customerPhone: custPhone || '',
+            address: custAddress || '',
             items: cart,
             deliveryFee: DELIVERY_FEE,
             subtotal,
@@ -580,7 +574,7 @@
                       </div>
                       <div className="text-right">
                         <p className="text-xs text-gray-400">Saldo App:</p>
-                        <p className={`text-base font-bold ${(loggedCadete.balance || 0) < APP_FEE ? 'text-red-400' : 'text-green-400'}`}>
+                        <p className={`text-base font-bold ${(Number(loggedCadete.balance) || 0) < APP_FEE ? 'text-red-400' : 'text-green-400'}`}>
                           ${loggedCadete.balance || 0}
                         </p>
                       </div>
@@ -606,7 +600,7 @@
                       <p className="text-gray-500 text-[11px] pt-1">* Realiza la transferencia y avísale al Admin para que te acredite el saldo.</p>
                     </div>
 
-                    {loggedCadete.isOnline && (loggedCadete.balance || 0) < APP_FEE && (
+                    {loggedCadete.isOnline && (Number(loggedCadete.balance) || 0) < APP_FEE && (
                       <div className="bg-red-100 border border-red-400 text-red-800 p-2.5 rounded text-center font-bold">
                         ⚠️ Saldo insuficiente para recibir viajes. Transfiere al Alias de arriba y avisa al Admin.
                       </div>
@@ -720,26 +714,26 @@
                     <form onSubmit={handleCreateCadete} className="border p-3 rounded bg-gray-50 space-y-2">
                       <h3 className="font-bold text-gray-800">Registrar Nuevo Cadete</h3>
                       <input required placeholder="Nombre completo" value={newCadeteName} onChange={e=>setNewCadeteName(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required type="text" placeholder="Teléfono WhatsApp (Ej: 3826123456)" value={newCadetePhone} onChange={e=>newCadetePhone(e.target.value)} className="w-full p-2 border rounded" />
-                      <select value={newCadeteVehicle} onChange={e=>newCadeteVehicle(e.target.value)} className="w-full p-2 border rounded bg-white">
+                      <input required type="text" placeholder="Teléfono WhatsApp (Ej: 3826123456)" value={newCadetePhone} onChange={e=>setNewCadetePhone(e.target.value)} className="w-full p-2 border rounded" />
+                      <select value={newCadeteVehicle} onChange={e=>setNewCadeteVehicle(e.target.value)} className="w-full p-2 border rounded bg-white">
                         <option value="Moto">Moto</option>
                         <option value="Bicicleta">Bicicleta</option>
                         <option value="Auto">Auto</option>
                       </select>
                       <div className="grid grid-cols-2 gap-2">
-                        <input required placeholder="Usuario" value={newCadeteUser} onChange={e=>newCadeteUser(e.target.value)} className="w-full p-2 border rounded" />
-                        <input required placeholder="Contraseña" value={newCadetePass} onChange={e=>newCadetePass(e.target.value)} className="w-full p-2 border rounded" />
+                        <input required placeholder="Usuario" value={newCadeteUser} onChange={e=>setNewCadeteUser(e.target.value)} className="w-full p-2 border rounded" />
+                        <input required placeholder="Contraseña" value={newCadetePass} onChange={e=>setNewCadetePass(e.target.value)} className="w-full p-2 border rounded" />
                       </div>
                       <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold">Crear Cadete</button>
                     </form>
 
                     <form onSubmit={handleCreateStore} className="border p-3 rounded bg-gray-50 space-y-2">
                       <h3 className="font-bold text-gray-800">Registrar Nuevo Comercio (con datos de pago)</h3>
-                      <input required placeholder="Nombre del Negocio" value={newStoreName} onChange={e=>newStoreName(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required placeholder="Dirección del Local" value={newStoreAddress} onChange={e=>newStoreAddress(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required placeholder="Nombre del Negocio" value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required placeholder="Dirección del Local" value={newStoreAddress} onChange={e=>setNewStoreAddress(e.target.value)} className="w-full p-2 border rounded" />
                       <input required type="text" placeholder="WhatsApp del local (Ej: 3826123456)" value={newStorePhone} onChange={e=>newStorePhone(e.target.value)} className="w-full p-2 border rounded" />
-                      <input placeholder="Alias de Mercado Pago del Local" value={newStoreAlias} onChange={e=>newStoreAlias(e.target.value)} className="w-full p-2 border rounded font-mono" />
-                      <input placeholder="Nombre del Titular de la cuenta" value={newStoreTitular} onChange={e=>newStoreTitular(e.target.value)} className="w-full p-2 border rounded" />
+                      <input placeholder="Alias de Mercado Pago del Local" value={newStoreAlias} onChange={e=>setNewStoreAlias(e.target.value)} className="w-full p-2 border rounded font-mono" />
+                      <input placeholder="Nombre del Titular de la cuenta" value={newStoreTitular} onChange={e=>setNewStoreTitular(e.target.value)} className="w-full p-2 border rounded" />
                       <input required placeholder="Horario (Ej: 20:00 a 00:00 hs)" value={newStoreHours} onChange={e=>setNewStoreHours(e.target.value)} className="w-full p-2 border rounded" />
                       <div className="grid grid-cols-2 gap-2">
                         <input required placeholder="Usuario" value={newStoreUser} onChange={e=>newStoreUser(e.target.value)} className="w-full p-2 border rounded" />
