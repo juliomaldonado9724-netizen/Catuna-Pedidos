@@ -58,7 +58,6 @@
       const [globalAnnouncement, setGlobalAnnouncement] = useState('');
 
       const [searchTerm, setSearchTerm] = useState('');
-      const [orderPrepTimes, setOrderPrepTimes] = useState({});
       const [currentTime, setCurrentTime] = useState(Date.now());
       const [isCartOpen, setIsCartOpen] = useState(false);
 
@@ -204,7 +203,7 @@
       const [custCoords, setCustCoords] = useState(null);
       const [paymentMethod, setPaymentMethod] = useState('Efectivo');
       const [isGettingLocation, setIsGettingLocation] = useState(false);
-      const [lastOrderSent, setLastOrderSent] = useState(null);
+      const [lastOrderId, setLastOrderId] = useState(null);
 
       const handleGetLocationGPS = () => {
         if (!navigator.geolocation) {
@@ -490,7 +489,7 @@
           await db.collection('cadetes').doc(loggedCadete.id).update({ balance: newBalance });
           await db.collection('orders').doc(orderId).update({ status: 'en_camino', cadeteId: loggedCadete.id });
           setLoggedCadete({ ...loggedCadete, balance: newBalance });
-          alert("¡Envío aceptado! Se descontaron $" + APP_FEE + " de tu saldo.");
+          alert("¡Envío aceptado! Se te notificará al cliente que su pedido ya va en camino.");
         } catch (err) {
           alert("Error al aceptar envío: " + err.message);
         }
@@ -584,11 +583,11 @@
         const storesInvolvedIds = storesList.map(s => s.storeId);
         
         const subtotal = cartSubtotal;
-        const totalDeliveryFee = calculatedDeliveryFee; // Corregido el paso de la tarifa de envío
+        const totalDeliveryFee = calculatedDeliveryFee; 
         const grandTotal = subtotal + totalDeliveryFee;
         
         try {
-          await db.collection('orders').add({
+          const docRef = await db.collection('orders').add({
             storesInvolved: storesInvolvedIds,
             storesList: storesList,
             customerName: custName,
@@ -597,13 +596,12 @@
             coords: custCoords || null,
             paymentMethod: paymentMethod,
             items: cart,
-            deliveryFee: totalDeliveryFee, // Guardado correcto en Firebase
+            deliveryFee: totalDeliveryFee,
             subtotal: subtotal,
-            total: grandTotal, // Total con costo de envío incluido
+            total: grandTotal,
             status: 'pendiente',
             cadeteId: null,
             storeSettled: false,
-            prepTime: 'Por calcular',
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
 
@@ -617,7 +615,7 @@
             }
           });
 
-          setLastOrderSent({ storeName: storesList.map(s => s.storeName).join(', '), total: Math.round(grandTotal), deliveryFee: totalDeliveryFee, paymentMethod, storesList });
+          setLastOrderId(docRef.id);
           setCart([]);
           setIsCartOpen(false);
           setCustName(''); setCustPhone(''); setCustAddress(''); setCustCoords(null); setPaymentMethod('Efectivo');
@@ -666,6 +664,10 @@
 
       const totalCartItemsCount = cart.reduce((sum, item) => sum + Number(item.quantity), 0);
 
+      // BUSCAR ÚLTIMO PEDIDO REALIZADO POR EL CLIENTE EN TIEMPO REAL
+      const activeLiveOrder = orders.find(o => o.id === lastOrderId);
+      const activeCadete = activeLiveOrder ? cadetes.find(c => c.id === activeLiveOrder.cadeteId) : null;
+
       return (
         <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl relative pb-24">
           <header className="bg-red-600 text-white p-4 sticky top-0 z-50 flex justify-between items-center shadow">
@@ -694,6 +696,62 @@
             {/* 1. VISTA CLIENTE */}
             {currentTab === 'cliente' && (
               <div className="space-y-4">
+                
+                {/* TRACKING EN TIEMPO REAL DEL PEDIDO PARA EL CLIENTE */}
+                {activeLiveOrder && activeLiveOrder.status !== 'entregado' && activeLiveOrder.status !== 'cancelado_por_tiempo' && (
+                  <div className={`p-4 rounded-xl border-2 text-center space-y-2 shadow-lg transition-all ${activeLiveOrder.status === 'en_camino' ? 'bg-green-50 border-green-500 animate-pulse' : 'bg-orange-50 border-orange-400'}`}>
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="text-xl">{activeLiveOrder.status === 'en_camino' ? '🛵' : '⏳'}</span>
+                      <h3 className="font-extrabold text-sm text-gray-900">
+                        {activeLiveOrder.status === 'en_camino' ? '¡TU PEDIDO YA VA EN CAMINO!' : 'TU PEDIDO SE ESTÁ PREPARANDO'}
+                      </h3>
+                    </div>
+
+                    <p className="text-xs text-gray-700">
+                      Total a pagar: <strong>${activeLiveOrder.total}</strong> ({activeLiveOrder.paymentMethod})
+                    </p>
+
+                    {activeLiveOrder.status === 'en_camino' && activeCadete ? (
+                      <div className="bg-white p-2.5 rounded-lg border border-green-200 text-left text-xs space-y-1.5 shadow-sm">
+                        <p className="font-bold text-green-900 flex justify-between">
+                          <span>Repartidor asignado:</span>
+                          <span className="text-green-700 font-extrabold">{activeCadete.name}</span>
+                        </p>
+                        <p className="text-gray-600">Vehículo: <strong>{activeCadete.vehicle}</strong></p>
+                        
+                        <a 
+                          href={`https://wa.me/549${activeCadete.phone}?text=Hola%20${encodeURIComponent(activeCadete.name)},%20te%20escribo%20por%20mi%20pedido%20en%20Catuna%20Pedidos.`}
+                          target="_blank"
+                          className="block w-full bg-green-600 hover:bg-green-700 text-white font-bold text-center py-1.5 rounded shadow mt-1">
+                          💬 Contactar al Cadete por WhatsApp
+                        </a>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-orange-800 italic">
+                        Esperando que el repartidor acepte la ruta y retire tus productos...
+                      </p>
+                    )}
+
+                    {activeLiveOrder.paymentMethod === 'Transferencia' && activeLiveOrder.storesList && (
+                      <div className="bg-amber-50 border border-amber-200 p-2 rounded text-[11px] text-left space-y-1 mt-2">
+                        <p className="font-bold text-amber-900">💳 Alias para transferir productos:</p>
+                        {activeLiveOrder.storesList.map((s, idx) => (
+                          <div key={idx} className="flex justify-between items-center border-b pb-1 last:border-b-0">
+                            <span><strong>{s.storeName}:</strong> <span className="font-mono font-bold select-all">{s.alias || 'Consultar local'}</span></span>
+                            {s.storePhone && (
+                              <a href={`https://wa.me/549${s.storePhone}?text=Hola,%20te%20envío%20el%20comprobante%20de%20mi%20pedido:`} target="_blank" className="bg-green-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">
+                                💬 Comprobante
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <button onClick={() => setLastOrderId(null)} className="text-[10px] text-gray-400 underline pt-1 block mx-auto">Ocultar aviso</button>
+                  </div>
+                )}
+
                 <div className={`p-2.5 rounded-lg border text-center text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm ${onlineCadetesCount > 0 ? 'bg-green-50 border-green-300 text-green-800' : 'bg-red-50 border-red-300 text-red-800'}`}>
                   {onlineCadetesCount > 0 ? (
                     <><span>🛵</span> <span>¡Hay {onlineCadetesCount} {onlineCadetesCount === 1 ? 'cadete activo' : 'cadetes activos'} listos para repartir!</span></>
@@ -701,30 +759,6 @@
                     <><span>⚠️</span> <span>No hay cadetes activos en este momento. Pedidos pausados temporalmente.</span></>
                   )}
                 </div>
-
-                {lastOrderSent && (
-                  <div className="bg-green-50 border-2 border-green-500 p-3 rounded-lg text-center space-y-2 shadow-md">
-                    <p className="font-bold text-green-900 text-sm">✅ ¡Pedido realizado con éxito!</p>
-                    <p className="text-xs text-gray-700">Total Pedido: <strong>${lastOrderSent.total}</strong> (incluye ${lastOrderSent.deliveryFee} de envío)</p>
-                    <p className="text-xs text-gray-600">Forma de pago elegida: <strong>{lastOrderSent.paymentMethod}</strong></p>
-                    {lastOrderSent.paymentMethod === 'Transferencia' && lastOrderSent.storesList && (
-                      <div className="bg-amber-50 border border-amber-200 p-2 rounded text-[11px] text-left space-y-1">
-                        <p className="font-bold text-amber-900">💳 Alias de los comercios para transferir el valor de los productos:</p>
-                        {lastOrderSent.storesList.map((s, idx) => (
-                          <div key={idx} className="flex justify-between items-center border-b pb-1 last:border-b-0">
-                            <span><strong>{s.storeName}:</strong> <span className="font-mono font-bold select-all">{s.alias || 'Consultar al local'}</span></span>
-                            {s.storePhone && (
-                              <a href={`https://wa.me/549${s.storePhone}?text=Hola,%20te%20envío%20el%20comprobante%20de%20mi%20pedido%20en%20Catuna%20Pedidos:`} target="_blank" className="bg-green-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">
-                                💬 Enviar Comprobante
-                              </a>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <button onClick={() => setLastOrderSent(null)} className="text-[11px] text-gray-500 underline">Cerrar aviso</button>
-                  </div>
-                )}
 
                 {promoProducts.length > 0 && (
                   <div className="bg-gradient-to-r from-red-50 to-amber-50 border-2 border-red-400 p-3 rounded-xl shadow-sm space-y-2">
