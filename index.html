@@ -81,7 +81,6 @@
         };
       }, []);
 
-      // VERIFICACIÓN AUTOMÁTICA DE EXPIRACIÓN DE PEDIDOS PENDIENTES (10 MINUTOS)
       useEffect(() => {
         const interval = setInterval(async () => {
           const now = Date.now();
@@ -90,7 +89,6 @@
               const orderTime = order.createdAt.toMillis ? order.createdAt.toMillis() : order.createdAt.seconds * 1000;
               const diffMinutes = (now - orderTime) / (1000 * 60);
               
-              // Si pasan más de 10 minutos sin ser tomado, se cancela automáticamente
               if (diffMinutes > 10) {
                 try {
                   await db.collection('orders').doc(order.id).update({ status: 'cancelado_por_tiempo' });
@@ -100,7 +98,7 @@
               }
             }
           }
-        }, 30000); // Revisa cada 30 segundos
+        }, 30000);
 
         return () => clearInterval(interval);
       }, [orders]);
@@ -134,6 +132,7 @@
       const [prodName, setProdName] = useState('');
       const [prodPrice, setProdPrice] = useState('');
       const [prodUnit, setProdUnit] = useState('Unidad');
+      const [prodCategory, setProdCategory] = useState('General'); // NUEVA PROPIEDAD DE CATEGORÍA
       const [prodDesc, setProdDesc] = useState('');
       const [prodImg, setProdImg] = useState('');
       const [isCompressing, setIsCompressing] = useState(false);
@@ -325,11 +324,12 @@
             name: prodName, 
             price: Number(prodPrice) || 0, 
             unit: prodUnit || 'Unidad',
+            category: prodCategory || 'General',
             description: prodDesc, 
             image: prodImg || 'https://via.placeholder.com/150',
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
-          setProdName(''); setProdPrice(''); setProdUnit('Unidad'); setProdDesc(''); setProdImg('');
+          setProdName(''); setProdPrice(''); setProdUnit('Unidad'); setProdCategory('General'); setProdDesc(''); setProdImg('');
           alert("Producto guardado con éxito en la nube.");
         } catch (err) {
           alert("Error al guardar producto: " + err.message);
@@ -587,6 +587,14 @@
                       return p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q));
                     });
 
+                    // AGRUPAR PRODUCTOS POR CATEGORÍA
+                    const categoriesMap = {};
+                    storeProducts.forEach(prod => {
+                      const cat = prod.category || 'General';
+                      if (!categoriesMap[cat]) categoriesMap[cat] = [];
+                      categoriesMap[cat].push(prod);
+                    });
+
                     return (
                       <div key={store.id} className="border rounded-lg p-3 bg-gray-50 shadow-sm space-y-3">
                         <div className="flex justify-between items-start">
@@ -608,48 +616,55 @@
                           </div>
                         )}
 
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                           {storeProducts.length === 0 ? (
                             <p className="text-[11px] text-gray-400 italic">No hay productos cargados en este local.</p>
                           ) : (
-                            storeProducts.map(prod => {
-                              const currentQty = selectedQtyMap[prod.id] !== undefined ? selectedQtyMap[prod.id] : 1;
-                              const calculatedPrice = Math.round(prod.price * (Number(currentQty) || 1));
+                            Object.keys(categoriesMap).map(categoryName => (
+                              <div key={categoryName} className="space-y-1.5">
+                                <h4 className="text-xs font-bold text-red-600 uppercase tracking-wide border-b border-red-200 pb-0.5 mt-2">
+                                  📁 {categoryName}
+                                </h4>
+                                {categoriesMap[categoryName].map(prod => {
+                                  const currentQty = selectedQtyMap[prod.id] !== undefined ? selectedQtyMap[prod.id] : 1;
+                                  const calculatedPrice = Math.round(prod.price * (Number(currentQty) || 1));
 
-                              return (
-                                <div key={prod.id} className="flex gap-3 bg-white p-2 rounded border items-center">
-                                  <img src={prod.image} className="w-16 h-16 object-cover rounded bg-gray-200" alt={prod.name} />
-                                  <div className="flex-1">
-                                    <p className="font-bold text-sm text-gray-800">{prod.name}</p>
-                                    <p className="text-xs text-gray-500">{prod.description}</p>
-                                    <p className="text-xs font-bold text-red-600 mt-0.5">${prod.price} <span className="text-[10px] text-gray-400">/ {prod.unit || 'Unidad'}</span></p>
-                                    
-                                    <div className="mt-1 flex items-center gap-1.5">
-                                      <span className="text-[10px] font-semibold text-gray-600">Cant:</span>
-                                      <input 
-                                        type="number" 
-                                        step={prod.unit === 'Kg' ? '0.25' : (prod.unit === '100g' ? '0.5' : '1')}
-                                        min="0.1" 
-                                        value={currentQty} 
-                                        onChange={(e) => setSelectedQtyMap({ ...selectedQtyMap, [prod.id]: e.target.value })}
-                                        className="w-14 text-xs p-1 border rounded font-bold text-center bg-gray-50"
-                                      />
-                                      <span className="text-[10px] text-gray-500">{prod.unit || 'Unid.'}</span>
+                                  return (
+                                    <div key={prod.id} className="flex gap-3 bg-white p-2 rounded border items-center">
+                                      <img src={prod.image} className="w-16 h-16 object-cover rounded bg-gray-200" alt={prod.name} />
+                                      <div className="flex-1">
+                                        <p className="font-bold text-sm text-gray-800">{prod.name}</p>
+                                        <p className="text-xs text-gray-500">{prod.description}</p>
+                                        <p className="text-xs font-bold text-red-600 mt-0.5">${prod.price} <span className="text-[10px] text-gray-400">/ {prod.unit || 'Unidad'}</span></p>
+                                        
+                                        <div className="mt-1 flex items-center gap-1.5">
+                                          <span className="text-[10px] font-semibold text-gray-600">Cant:</span>
+                                          <input 
+                                            type="number" 
+                                            step={prod.unit === 'Kg' ? '0.25' : (prod.unit === '100g' ? '0.5' : '1')}
+                                            min="0.1" 
+                                            value={currentQty} 
+                                            onChange={(e) => setSelectedQtyMap({ ...selectedQtyMap, [prod.id]: e.target.value })}
+                                            className="w-14 text-xs p-1 border rounded font-bold text-center bg-gray-50"
+                                          />
+                                          <span className="text-[10px] text-gray-500">{prod.unit || 'Unid.'}</span>
+                                        </div>
+                                      </div>
+
+                                      <div className="text-right flex flex-col items-end gap-1">
+                                        <p className="text-xs font-extrabold text-gray-800">${calculatedPrice}</p>
+                                        <button 
+                                          onClick={() => addToCart(prod, store)} 
+                                          disabled={!store.isOpen || onlineCadetesCount === 0}
+                                          className={`text-xs px-2.5 py-1 rounded font-bold ${store.isOpen && onlineCadetesCount > 0 ? 'bg-red-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>
+                                          {store.isOpen && onlineCadetesCount > 0 ? '+ Pedir' : 'No disponible'}
+                                        </button>
+                                      </div>
                                     </div>
-                                  </div>
-
-                                  <div className="text-right flex flex-col items-end gap-1">
-                                    <p className="text-xs font-extrabold text-gray-800">${calculatedPrice}</p>
-                                    <button 
-                                      onClick={() => addToCart(prod, store)} 
-                                      disabled={!store.isOpen || onlineCadetesCount === 0}
-                                      className={`text-xs px-2.5 py-1 rounded font-bold ${store.isOpen && onlineCadetesCount > 0 ? 'bg-red-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>
-                                      {store.isOpen && onlineCadetesCount > 0 ? '+ Pedir' : 'No disponible'}
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })
+                                  );
+                                })}
+                              </div>
+                            ))
                           )}
                         </div>
                       </div>
@@ -823,8 +838,8 @@
                     </div>
 
                     <form onSubmit={handleAddProduct} className="border p-3 rounded bg-gray-50 space-y-3">
-                      <h3 className="font-bold text-gray-800">Cargar Producto al Catálogo (con foto)</h3>
-                      <input required placeholder="Nombre del producto (Ej: Bife de chorizo, Queso, Coca 2L)" value={prodName} onChange={e=>setProdName(e.target.value)} className="w-full p-2 border rounded" />
+                      <h3 className="font-bold text-gray-800">Cargar Producto al Catálogo (con foto y categoría)</h3>
+                      <input required placeholder="Nombre del producto (Ej: Bife de chorizo, Coca 2L)" value={prodName} onChange={e=>setProdName(e.target.value)} className="w-full p-2 border rounded" />
                       
                       <div className="grid grid-cols-2 gap-2">
                         <div>
@@ -839,6 +854,20 @@
                             <option value="100g">Por 100 Gramos</option>
                           </select>
                         </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-gray-700">Categoría del producto:</label>
+                        <select value={prodCategory} onChange={e=>setProdCategory(e.target.value)} className="w-full p-2 border rounded bg-white font-bold text-red-600">
+                          <option value="Bebidas">🥤 Bebidas</option>
+                          <option value="Comidas / Minutas">🍔 Comidas / Minutas</option>
+                          <option value="Almacén">🛒 Almacén</option>
+                          <option value="Carnicería">🥩 Carnicería</option>
+                          <option value="Verdulería">🍅 Verdulería</option>
+                          <option value="Fiambrería">🧀 Fiambrería</option>
+                          <option value="Panadería">🍞 Panadería</option>
+                          <option value="General">📦 General / Varios</option>
+                        </select>
                       </div>
 
                       <input placeholder="Descripción breve (Opcional)" value={prodDesc} onChange={e=>setProdDesc(e.target.value)} className="w-full p-2 border rounded" />
@@ -860,7 +889,7 @@
                           <div className="flex items-center gap-2">
                             <img src={p.image} className="w-10 h-10 object-cover rounded bg-gray-200" />
                             <div>
-                              <p className="font-bold">{p.name}</p>
+                              <p className="font-bold">{p.name} <span className="text-[10px] bg-red-100 text-red-700 px-1 py-0.5 rounded">[{p.category || 'General'}]</span></p>
                               <p className="text-gray-500">${p.price} / {p.unit || 'Unidad'}</p>
                             </div>
                           </div>
