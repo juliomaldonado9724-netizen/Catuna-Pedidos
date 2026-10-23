@@ -567,12 +567,13 @@
         const uniqueStoresMap = {};
         cart.forEach(item => {
           if (!uniqueStoresMap[item.storeId]) {
+            const storeDoc = stores.find(s => s.id === item.storeId);
             uniqueStoresMap[item.storeId] = {
               storeId: item.storeId,
               storeName: item.storeName,
               storeAddress: item.storeAddress,
-              storePhone: item.storePhone,
-              alias: stores.find(s => s.id === item.storeId)?.alias || '',
+              storePhone: storeDoc ? storeDoc.phone : '',
+              alias: storeDoc ? storeDoc.alias : '',
               items: []
             };
           }
@@ -605,21 +606,13 @@
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
 
-          storesList.forEach(store => {
-            const storeItemsList = store.items.map(i => `• ${i.quantity} ${i.unit || 'Unid.'} x ${i.name} ($${Math.round(i.price * i.quantity)})`).join('%0A');
-            const storeSubtotal = store.items.reduce((s, i) => s + (i.price * i.quantity), 0);
-            const msg = `🔔 *NUEVO PEDIDO - Catuna Pedidos*%0A%0A*Cliente:* ${encodeURIComponent(custName)}%0A*Pago:* ${encodeURIComponent(paymentMethod)}%0A*Dirección:* ${encodeURIComponent(custAddress)}%0A%0A*Tus productos:*%0A${storeItemsList}%0A%0A*Subtotal Productos:* $${Math.round(storeSubtotal)}`;
-            
-            if (store.storePhone) {
-              window.open(`https://wa.me/549${store.storePhone}?text=${msg}`, '_blank');
-            }
-          });
-
+          // NOTIFICAR A CADA COMERCIO INVOLUCRADO MEDIANTE UN BOTÓN O UN ENLACE DE WHATSAPP INDIVIDUAL
+          // Nota: Guardamos la lista en el estado para que el cliente pueda abrir el WhatsApp de cada local de forma segura.
           setLastOrderId(docRef.id);
           setCart([]);
           setIsCartOpen(false);
           setCustName(''); setCustPhone(''); setCustAddress(''); setCustCoords(null); setPaymentMethod('Efectivo');
-          alert("¡Pedido enviado con éxito! Se notificó a los comercios.");
+          alert("¡Pedido enviado con éxito! Revisa los botones de WhatsApp para notificar a cada comercio.");
         } catch (err) {
           alert("Error al enviar pedido: " + err.message);
         }
@@ -699,7 +692,7 @@
                 
                 {/* TRACKING EN TIEMPO REAL DEL PEDIDO PARA EL CLIENTE */}
                 {activeLiveOrder && activeLiveOrder.status !== 'entregado' && activeLiveOrder.status !== 'cancelado_por_tiempo' && (
-                  <div className={`p-4 rounded-xl border-2 text-center space-y-2 shadow-lg transition-all ${activeLiveOrder.status === 'en_camino' ? 'bg-green-50 border-green-500 animate-pulse' : 'bg-orange-50 border-orange-400'}`}>
+                  <div className={`p-4 rounded-xl border-2 text-center space-y-3 shadow-lg transition-all ${activeLiveOrder.status === 'en_camino' ? 'bg-green-50 border-green-500 animate-pulse' : 'bg-orange-50 border-orange-400'}`}>
                     <div className="flex items-center justify-center gap-2">
                       <span className="text-xl">{activeLiveOrder.status === 'en_camino' ? '🛵' : '⏳'}</span>
                       <h3 className="font-extrabold text-sm text-gray-900">
@@ -710,6 +703,34 @@
                     <p className="text-xs text-gray-700">
                       Total a pagar: <strong>${activeLiveOrder.total}</strong> ({activeLiveOrder.paymentMethod})
                     </p>
+
+                    {/* BOTONES DE WHATSAPP INDIVIDUALES PARA CADA COMERCIO INVOLUCRADO */}
+                    {activeLiveOrder.storesList && (
+                      <div className="bg-white p-2.5 rounded-lg border border-orange-200 text-left text-xs space-y-2 shadow-sm">
+                        <p className="font-bold text-orange-900">🔔 Notifica a cada comercio por WhatsApp:</p>
+                        {activeLiveOrder.storesList.map((s, idx) => {
+                          const storeItemsList = s.items.map(i => `• ${i.quantity} ${i.unit || 'Unid.'} x ${i.name} ($${Math.round(i.price * i.quantity)})`).join('%0A');
+                          const storeSubtotal = s.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+                          const storeMsg = `🔔 *NUEVO PEDIDO - Catuna Pedidos*%0A%0A*Cliente:* ${encodeURIComponent(activeLiveOrder.customerName)}%0A*Pago:* ${encodeURIComponent(activeLiveOrder.paymentMethod)}%0A*Dirección:* ${encodeURIComponent(activeLiveOrder.address)}%0A%0A*Tus productos:*%0A${storeItemsList}%0A%0A*Subtotal:* $${Math.round(storeSubtotal)}`;
+
+                          return (
+                            <div key={idx} className="flex justify-between items-center border-b pb-1 last:border-b-0">
+                              <span><strong>{s.storeName}</strong></span>
+                              {s.storePhone ? (
+                                <a 
+                                  href={`https://wa.me/549${s.storePhone}?text=${storeMsg}`} 
+                                  target="_blank" 
+                                  className="bg-green-600 hover:bg-green-700 text-white px-2.5 py-1 rounded text-[11px] font-bold shadow flex items-center gap-1">
+                                  💬 Enviar a {s.storeName}
+                                </a>
+                              ) : (
+                                <span className="text-gray-400 text-[10px]">Sin teléfono</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
 
                     {activeLiveOrder.status === 'en_camino' && activeCadete ? (
                       <div className="bg-white p-2.5 rounded-lg border border-green-200 text-left text-xs space-y-1.5 shadow-sm">
