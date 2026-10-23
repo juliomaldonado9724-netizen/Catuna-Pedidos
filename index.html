@@ -78,7 +78,6 @@
         };
       }, []);
 
-      // ESTADOS ADMIN
       const [adminPass, setAdminPass] = useState('');
       const [isAdminLogged, setIsAdminLogged] = useState(false);
       
@@ -100,19 +99,16 @@
       const [selectedCadeteId, setSelectedCadeteId] = useState('');
       const [rechargeAmount, setRechargeAmount] = useState('');
 
-      // ESTADOS LOGIN COMERCIO / CADETE
       const [loginUser, setLoginUser] = useState('');
       const [loginPass, setLoginPass] = useState('');
       const [loggedStore, setLoggedStore] = useState(null);
       const [loggedCadete, setLoggedCadete] = useState(null);
 
-      // ESTADO NUEVO PRODUCTO
       const [prodName, setProdName] = useState('');
       const [prodPrice, setProdPrice] = useState('');
       const [prodDesc, setProdDesc] = useState('');
       const [prodImg, setProdImg] = useState('');
 
-      // ESTADO CARRITO CLIENTE
       const [cart, setCart] = useState([]);
       const [selectedStore, setSelectedStore] = useState(null);
       const [custName, setCustName] = useState('');
@@ -445,7 +441,7 @@
                     <h3 className="font-bold text-sm mb-2 text-gray-800">Pedido para {selectedStore?.name}</h3>
                     <form onSubmit={handleCreateOrder} className="space-y-2">
                       <input required placeholder="Tu Nombre" value={custName} onChange={e=>setCustName(e.target.value)} className="w-full text-xs p-1.5 border rounded" />
-                      <input required placeholder="Teléfono WhatsApp (Ej: 3826123456)" value={custPhone} onChange={e=>setCustPhone(e.target.value)} className="w-full text-xs p-1.5 border rounded" />
+                      <input required type="text" placeholder="Teléfono WhatsApp (Ej: 3826123456)" value={custPhone} onChange={e=>setCustPhone(e.target.value)} className="w-full text-xs p-1.5 border rounded" />
                       <input required placeholder="Dirección / Referencias de Entrega" value={custAddress} onChange={e=>setCustAddress(e.target.value)} className="w-full text-xs p-1.5 border rounded" />
                       <button type="submit" className="w-full bg-red-600 text-white py-2 rounded font-bold text-xs">
                         Confirmar Pedido Total: (${cart.reduce((s,i)=>s+(i.price*i.quantity),0) + DELIVERY_FEE})
@@ -732,9 +728,9 @@
                       <input required placeholder="Nombre del Negocio" value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} className="w-full p-2 border rounded" />
                       <input required placeholder="Dirección del Local" value={newStoreAddress} onChange={e=>setNewStoreAddress(e.target.value)} className="w-full p-2 border rounded" />
                       <input required type="text" placeholder="WhatsApp del local (Ej: 3826123456)" value={newStorePhone} onChange={e=>newStorePhone(e.target.value)} className="w-full p-2 border rounded" />
-                      <input placeholder="Alias de Mercado Pago del Local" value={newStoreAlias} onChange={e=>setNewStoreAlias(e.target.value)} className="w-full p-2 border rounded font-mono" />
-                      <input placeholder="Nombre del Titular de la cuenta" value={newStoreTitular} onChange={e=>setNewStoreTitular(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required placeholder="Horario (Ej: 20:00 a 00:00 hs)" value={newStoreHours} onChange={e=>setNewStoreHours(e.target.value)} className="w-full p-2 border rounded" />
+                      <input placeholder="Alias de Mercado Pago del Local" value={newStoreAlias} onChange={e=>newStoreAlias(e.target.value)} className="w-full p-2 border rounded font-mono" />
+                      <input placeholder="Nombre del Titular de la cuenta" value={newStoreTitular} onChange={e=>newStoreTitular(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required placeholder="Horario (Ej: 20:00 a 00:00 hs)" value={newStoreHours} onChange={e=>newStoreHours(e.target.value)} className="w-full p-2 border rounded" />
                       <div className="grid grid-cols-2 gap-2">
                         <input required placeholder="Usuario" value={newStoreUser} onChange={e=>newStoreUser(e.target.value)} className="w-full p-2 border rounded" />
                         <input required placeholder="Contraseña" value={newStorePass} onChange={e=>newStorePass(e.target.value)} className="w-full p-2 border rounded" />
