@@ -441,7 +441,7 @@
                     <h3 className="font-bold text-sm mb-2 text-gray-800">Pedido para {selectedStore?.name}</h3>
                     <form onSubmit={handleCreateOrder} className="space-y-2">
                       <input required placeholder="Tu Nombre" value={custName} onChange={e=>setCustName(e.target.value)} className="w-full text-xs p-1.5 border rounded" />
-                      <input required type="text" placeholder="Teléfono WhatsApp (Ej: 3826123456)" value={custPhone} onChange={e=>setCustPhone(e.target.value)} className="w-full text-xs p-1.5 border rounded" />
+                      <input required placeholder="Teléfono WhatsApp (Ej: 3826123456)" value={custPhone} onChange={e=>setCustPhone(e.target.value)} className="w-full text-xs p-1.5 border rounded" />
                       <input required placeholder="Dirección / Referencias de Entrega" value={custAddress} onChange={e=>setCustAddress(e.target.value)} className="w-full text-xs p-1.5 border rounded" />
                       <button type="submit" className="w-full bg-red-600 text-white py-2 rounded font-bold text-xs">
                         Confirmar Pedido Total: (${cart.reduce((s,i)=>s+(i.price*i.quantity),0) + DELIVERY_FEE})
@@ -725,7 +725,7 @@
                       <h3 className="font-bold text-gray-800">Registrar Nuevo Comercio (con datos de pago)</h3>
                       <input required type="text" placeholder="Nombre del Negocio" value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} className="w-full p-2 border rounded" />
                       <input required type="text" placeholder="Dirección del Local" value={newStoreAddress} onChange={e=>setNewStoreAddress(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required type="text" placeholder="WhatsApp del local (Ej: 3826123456)" value={newStorePhone} onChange={e=>newStorePhone(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required type="text" placeholder="WhatsApp del local (Ej: 3826123456)" value={newStorePhone} onChange={e=>setNewStorePhone(e.target.value)} className="w-full p-2 border rounded" />
                       <input type="text" placeholder="Alias de Mercado Pago del Local" value={newStoreAlias} onChange={e=>setNewStoreAlias(e.target.value)} className="w-full p-2 border rounded font-mono" />
                       <input type="text" placeholder="Nombre del Titular de la cuenta" value={newStoreTitular} onChange={e=>setNewStoreTitular(e.target.value)} className="w-full p-2 border rounded" />
                       <input required type="text" placeholder="Horario (Ej: 20:00 a 00:00 hs)" value={newStoreHours} onChange={e=>setNewStoreHours(e.target.value)} className="w-full p-2 border rounded" />
