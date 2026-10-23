@@ -1,4 +1,3 @@
-html
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -25,15 +24,16 @@ html
     function App() {
       const [currentTab, setCurrentTab] = useState('cliente');
 
-      // DATOS DE PAGO DEL ADMIN
+      // DATOS DE PAGO DEL ADMIN (Para recargas de cadetes)
       const ADMIN_PAYMENT_INFO = {
         alias: "Juliomaldonado132",
         titular: "Julio Nicolás Maldonado",
         banco: "Mercado Pago"
       };
 
-      const STORE_COMMISSION_PERCENT = 0.10; // 10% comisión
-      const APP_FEE = 300; // Tarifa app para cadetes
+      const STORE_COMMISSION_PERCENT = 0.10; // 10% comisión para el comercio
+      const APP_FEE = 300; // Tarifa app para cadetes (tu comisión)
+      const DELIVERY_FEE = 1500; // Envío total ($1200 para el cadete + $300 para la app)
 
       // Base de datos LocalStorage
       const [stores, setStores] = useState(() => {
@@ -67,6 +67,9 @@ html
       
       const [newStoreName, setNewStoreName] = useState('');
       const [newStoreAddress, setNewStoreAddress] = useState('');
+      const [newStorePhone, setNewStorePhone] = useState('');
+      const [newStoreAlias, setNewStoreAlias] = useState('');
+      const [newStoreTitular, setNewStoreTitular] = useState('');
       const [newStoreHours, setNewStoreHours] = useState('20:00 a 00:00 hs');
       const [newStoreUser, setNewStoreUser] = useState('');
       const [newStorePass, setNewStorePass] = useState('');
@@ -98,6 +101,7 @@ html
       const [custName, setCustName] = useState('');
       const [custPhone, setCustPhone] = useState('');
       const [custAddress, setCustAddress] = useState('');
+      const [lastOrderSent, setLastOrderSent] = useState(null); // Guarda el último pedido para mostrar el botón de enviar comprobante
 
       // --- ACCIONES ADMIN ---
       const handleAdminLogin = (e) => {
@@ -112,13 +116,16 @@ html
           id: Date.now(), 
           name: newStoreName, 
           address: newStoreAddress, 
+          phone: newStorePhone,
+          alias: newStoreAlias,
+          titular: newStoreTitular,
           hours: newStoreHours || '20:00 a 00:00 hs',
           isOpen: true,
           user: newStoreUser, 
           pass: newStorePass 
         };
         setStores([...stores, store]);
-        setNewStoreName(''); setNewStoreAddress(''); setNewStoreHours(''); setNewStoreUser(''); setNewStorePass('');
+        setNewStoreName(''); setNewStoreAddress(''); setNewStorePhone(''); setNewStoreAlias(''); setNewStoreTitular(''); setNewStoreHours(''); setNewStoreUser(''); setNewStorePass('');
         alert("Comercio registrado con éxito.");
       };
 
@@ -228,20 +235,32 @@ html
           storeId: selectedStore.id,
           storeName: selectedStore.name,
           storeAddress: selectedStore.address,
+          storePhone: selectedStore.phone,
           customerName: custName,
           customerPhone: custPhone,
           address: custAddress,
           items: cart,
-          deliveryFee: 1200,
+          deliveryFee: DELIVERY_FEE,
           subtotal,
-          total: subtotal + 1200,
+          total: subtotal + DELIVERY_FEE,
           status: 'pendiente',
           cadeteId: null,
           storeSettled: false
         };
         setOrders([newOrder, ...orders]);
+
+        // GENERAR MENSAJE DE WHATSAPP PARA EL COMERCIO
+        const itemsList = cart.map(i => `• ${i.quantity}x ${i.name} ($${i.price * i.quantity})`).join('%0A');
+        const msg = `🔔 *NUEVO PEDIDO - Catuna Pedidos*%0A%0A*Cliente:* ${encodeURIComponent(custName)}%0A*Tel:* ${encodeURIComponent(custPhone)}%0A*Dirección:* ${encodeURIComponent(custAddress)}%0A%0A*Productos:*%0A${itemsList}%0A%0A*Subtotal Comida:* $${subtotal}%0A*Envío:* $${DELIVERY_FEE}%0A*TOTAL A PAGAR:* $${subtotal + DELIVERY_FEE}`;
+        
+        if (selectedStore.phone) {
+          window.open(`https://wa.me/549${selectedStore.phone}?text=${msg}`, '_blank');
+        }
+
+        setLastOrderSent({ storePhone: selectedStore.phone, storeName: selectedStore.name, total: subtotal + DELIVERY_FEE });
         setCart([]);
-        alert("¡Pedido enviado! En breve un cadete lo aceptará.");
+        setCustName(''); setCustPhone(''); setCustAddress('');
+        alert("¡Pedido enviado con éxito! Se notificó al comercio por WhatsApp.");
       };
 
       return (
@@ -266,6 +285,21 @@ html
             {/* 1. VISTA CLIENTE */}
             {currentTab === 'cliente' && (
               <div className="space-y-6">
+                {/* BOTÓN FLOTANTE PARA ENVIAR COMPROBANTE SI ACABA DE PEDIR */}
+                {lastOrderSent && (
+                  <div className="bg-green-50 border-2 border-green-500 p-3 rounded-lg text-center space-y-2 shadow-md">
+                    <p className="font-bold text-green-900 text-sm">✅ ¡Pedido realizado a {lastOrderSent.storeName}!</p>
+                    <p className="text-xs text-gray-600">Si pagaste por transferencia, toca el botón para enviar el comprobante directamente al WhatsApp del local.</p>
+                    <a 
+                      href={`https://wa.me/549${lastOrderSent.storePhone}?text=Hola,%20te%20envío%20el%20comprobante%20de%20mi%20pedido%20por%20$${lastOrderSent.total}%20en%20Catuna%20Pedidos:`}
+                      target="_blank"
+                      className="block w-full bg-green-600 text-white font-bold py-2 rounded text-xs shadow hover:bg-green-700">
+                      💬 Enviar Comprobante por WhatsApp
+                    </a>
+                    <button onClick={() => setLastOrderSent(null)} className="text-[11px] text-gray-500 underline">Cerrar aviso</button>
+                  </div>
+                )}
+
                 {stores.length === 0 ? (
                   <div className="text-center py-10 text-gray-500">
                     <p className="font-bold text-base">Próximamente más comercios</p>
@@ -284,6 +318,15 @@ html
                           {store.isOpen ? '🟢 ABIERTO' : '🔴 CERRADO'}
                         </span>
                       </div>
+
+                      {/* DATOS BANCARIOS DEL LOCAL PARA EL CLIENTE */}
+                      {store.alias && (
+                        <div className="bg-amber-50 border border-amber-200 p-2 rounded text-[11px] space-y-0.5">
+                          <p className="font-bold text-amber-900">💳 Datos para transferir la comida:</p>
+                          <p className="text-gray-700"><strong>Alias:</strong> <span className="font-mono font-bold select-all">{store.alias}</span></p>
+                          {store.titular && <p className="text-gray-700"><strong>Titular:</strong> {store.titular}</p>}
+                        </div>
+                      )}
 
                       <div className="space-y-2">
                         {products.filter(p => p.storeId === store.id).map(prod => (
@@ -315,7 +358,7 @@ html
                       <input required placeholder="Teléfono WhatsApp (Ej: 3826123456)" value={custPhone} onChange={e=>setCustPhone(e.target.value)} className="w-full text-xs p-1.5 border rounded" />
                       <input required placeholder="Dirección / Referencias de Entrega" value={custAddress} onChange={e=>setCustAddress(e.target.value)} className="w-full text-xs p-1.5 border rounded" />
                       <button type="submit" className="w-full bg-red-600 text-white py-2 rounded font-bold text-xs">
-                        Confirmar Pedido Total: (${cart.reduce((s,i)=>s+(i.price*i.quantity),0) + 1200})
+                        Confirmar Pedido Total: (${cart.reduce((s,i)=>s+(i.price*i.quantity),0) + DELIVERY_FEE})
                       </button>
                     </form>
                   </div>
@@ -339,11 +382,11 @@ html
                       <div>
                         <p className="font-bold text-gray-800 text-sm">{loggedStore.name}</p>
                         <p className="text-gray-500 text-[11px]">{loggedStore.hours}</p>
+                        {loggedStore.alias && <p className="text-amber-800 font-mono text-[10px]">Alias: {loggedStore.alias}</p>}
                       </div>
                       <button onClick={()=>setLoggedStore(null)} className="text-red-600 font-bold underline">Salir</button>
                     </div>
 
-                    {/* INTERRUPTOR ABIERTO / CERRADO */}
                     <div className="border p-3 rounded bg-gray-50 flex justify-between items-center">
                       <div>
                         <p className="font-bold text-gray-800">Estado del Local:</p>
@@ -411,7 +454,7 @@ html
                     </div>
 
                     <div className="border p-3 rounded bg-blue-50 border-blue-200 space-y-1">
-                      <p className="font-bold text-blue-900">💳 Cargar Crédito / Saldo:</p>
+                      <p className="font-bold text-blue-900">💳 Cargar Crédito / Saldo al Admin:</p>
                       <p className="text-gray-700"><strong>Banco:</strong> {ADMIN_PAYMENT_INFO.banco}</p>
                       <p className="text-gray-700"><strong>Alias:</strong> <span className="bg-white px-1.5 py-0.5 border rounded font-mono font-bold select-all">{ADMIN_PAYMENT_INFO.alias}</span></p>
                       <p className="text-gray-700"><strong>Titular:</strong> {ADMIN_PAYMENT_INFO.titular}</p>
@@ -429,7 +472,7 @@ html
                       <div key={o.id} className="border p-3 rounded bg-gray-50 space-y-2.5">
                         <div className="flex justify-between font-bold border-b pb-1">
                           <span className="text-red-600">{o.storeName}</span>
-                          <span className="text-green-700">Ganancia Envío: ${o.deliveryFee}</span>
+                          <span className="text-green-700">Ganancia Envío: $1200</span>
                         </div>
                         <p><strong>Retirar en:</strong> {o.storeAddress}</p>
                         <p><strong>Cliente:</strong> {o.customerName}</p>
@@ -453,7 +496,7 @@ html
 
                         {o.status === 'pendiente' && (
                           <button onClick={()=>handleAcceptOrder(o.id)} className="w-full bg-green-700 text-white py-2 rounded font-bold shadow mt-2">
-                            Aceptar Viaje (-${APP_FEE} de saldo)
+                            Aceptar Viaje (-${APP_FEE} comisión app)
                           </button>
                         )}
 
@@ -527,7 +570,7 @@ html
                     <form onSubmit={handleCreateCadete} className="border p-3 rounded bg-gray-50 space-y-2">
                       <h3 className="font-bold text-gray-800">Registrar Nuevo Cadete</h3>
                       <input required placeholder="Nombre completo" value={newCadeteName} onChange={e=>setNewCadeteName(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required placeholder="Teléfono WhatsApp" value={newCadetePhone} onChange={e=>setNewCadetePhone(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required placeholder="Teléfono WhatsApp" value={newCadetePhone} onChange={e=>newCadetePhone(e.target.value)} className="w-full p-2 border rounded" />
                       <select value={newCadeteVehicle} onChange={e=>setNewCadeteVehicle(e.target.value)} className="w-full p-2 border rounded bg-white">
                         <option value="Moto">Moto</option>
                         <option value="Bicicleta">Bicicleta</option>
@@ -540,15 +583,18 @@ html
                       <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold">Crear Cadete</button>
                     </form>
 
-                    {/* Crear Comercio */}
+                    {/* Crear Comercio con Datos Bancarios */}
                     <form onSubmit={handleCreateStore} className="border p-3 rounded bg-gray-50 space-y-2">
-                      <h3 className="font-bold text-gray-800">Registrar Nuevo Comercio</h3>
+                      <h3 className="font-bold text-gray-800">Registrar Nuevo Comercio (con datos de pago)</h3>
                       <input required placeholder="Nombre del Negocio" value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} className="w-full p-2 border rounded" />
                       <input required placeholder="Dirección del Local" value={newStoreAddress} onChange={e=>setNewStoreAddress(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required placeholder="Horario habitual (Ej: 20:00 a 00:00 hs)" value={newStoreHours} onChange={e=>setNewStoreHours(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required placeholder="WhatsApp del local (Ej: 3826123456)" value={newStorePhone} onChange={e=>setNewStorePhone(e.target.value)} className="w-full p-2 border rounded" />
+                      <input placeholder="Alias de Mercado Pago del Local" value={newStoreAlias} onChange={e=>newStoreAlias(e.target.value)} className="w-full p-2 border rounded font-mono" />
+                      <input placeholder="Nombre del Titular de la cuenta" value={newStoreTitular} onChange={e=>newStoreTitular(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required placeholder="Horario (Ej: 20:00 a 00:00 hs)" value={newStoreHours} onChange={e=>newStoreHours(e.target.value)} className="w-full p-2 border rounded" />
                       <div className="grid grid-cols-2 gap-2">
-                        <input required placeholder="Usuario" value={newStoreUser} onChange={e=>setNewStoreUser(e.target.value)} className="w-full p-2 border rounded" />
-                        <input required placeholder="Contraseña" value={newStorePass} onChange={e=>setNewStorePass(e.target.value)} className="w-full p-2 border rounded" />
+                        <input required placeholder="Usuario" value={newStoreUser} onChange={e=>newStoreUser(e.target.value)} className="w-full p-2 border rounded" />
+                        <input required placeholder="Contraseña" value={newStorePass} onChange={e=>newStorePass(e.target.value)} className="w-full p-2 border rounded" />
                       </div>
                       <button type="submit" className="w-full bg-gray-700 text-white py-2 rounded font-bold">Crear Comercio</button>
                     </form>
