@@ -1,0 +1,436 @@
+html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Delivery Catuna</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <!-- Babel para procesar JSX en el navegador -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; }
+  </style>
+</head>
+<body class="bg-gray-100">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // Iconos auxiliares usando Lucide
+    const Icon = ({ name, size = 20, className = "" }) => {
+      useEffect(() => {
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+      }, [name]);
+      return <i data-lucide={name} style={{ width: size, height: size }} class={`inline-block ${className}`}></i>;
+    };
+
+    function App() {
+      // Estado de Roles
+      const [currentRole, setCurrentRole] = useState('cliente'); // cliente, comercio, cadete, admin, registro
+
+      // Base de datos local simulada
+      const [stores, setStores] = useState([
+        { id: 1, name: "Pizzería Don Julio", category: "Comidas", address: "Av. Principal 123", commissionRate: 10, pending: false },
+        { id: 2, name: "Rotisería El Buen Gusto", category: "Comidas", address: "Calle Belgrano 45", commissionRate: 12, pending: false },
+        { id: 3, name: "Heladería Yummy", category: "Postres", address: "Plaza Central", commissionRate: 8, pending: false }
+      ]);
+
+      const [products, setProducts] = useState([
+        { id: 101, storeId: 1, name: "Pizza Muzzarella", price: 6500, description: "Salsa casera, muzzarella y aceitunas" },
+        { id: 102, storeId: 1, name: "Empanada de Carne", price: 900, description: "Carne cortada a cuchillo" },
+        { id: 201, storeId: 2, name: "Milanesa con Papas Fritas", price: 5800, description: "Milanesa de ternera XL" },
+        { id: 301, storeId: 3, name: "Helado 1/2 KG", price: 4200, description: "Elegir hasta 3 sabores" }
+      ]);
+
+      const [cadetes, setCadetes] = useState([
+        { id: 1, name: "Marcos Pérez", vehicle: "Moto 110cc", phone: "3826123456", pending: false }
+      ]);
+
+      const [orders, setOrders] = useState([
+        {
+          id: 1001,
+          customerName: "Vecino Ejemplo",
+          customerPhone: "3826999999",
+          address: "Barrio San Martin",
+          storeId: 1,
+          items: [{ name: "Pizza Muzzarella", price: 6500, quantity: 1 }],
+          subtotal: 6500,
+          deliveryFee: 1200,
+          serviceFee: 300,
+          total: 8000,
+          status: 'pendiente', // pendiente, preparando, listo, en_camino, entregado
+          cadeteId: null
+        }
+      ]);
+
+      // Formulario Registro
+      const [regType, setRegType] = useState('comercio');
+      const [regName, setRegName] = useState('');
+      const [regPhone, setRegPhone] = useState('');
+      const [regCategory, setRegCategory] = useState('Comidas');
+      const [regAddress, setRegAddress] = useState('');
+      const [regVehicle, setRegVehicle] = useState('Moto');
+      const [regSubmitted, setRegSubmitted] = useState(false);
+
+      // Carrito Cliente
+      const [cart, setCart] = useState([]);
+      const [selectedStore, setSelectedStore] = useState(null);
+      const [customerInfo, setCustomerInfo] = useState({ name: '', phone: '', address: '' });
+
+      const addToCart = (product, store) => {
+        if (selectedStore && selectedStore.id !== store.id) {
+          if (!confirm("Solo puedes pedir a un comercio a la vez. ¿Deseas vaciar el carrito actual?")) return;
+          setCart([]);
+        }
+        setSelectedStore(store);
+        const exists = cart.find(item => item.id === product.id);
+        if (exists) {
+          setCart(cart.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item));
+        } else {
+          setCart([...cart, { ...product, quantity: 1 }]);
+        }
+      };
+
+      const removeFromCart = (productId) => {
+        const updated = cart.map(item => item.id === productId ? { ...item, quantity: item.quantity - 1 } : item).filter(item => item.quantity > 0);
+        setCart(updated);
+        if (updated.length === 0) setSelectedStore(null);
+      };
+
+      const handleCreateOrder = (e) => {
+        e.preventDefault();
+        if (cart.length === 0 || !selectedStore) return;
+        const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        const deliveryFee = 1200;
+        const serviceFee = 300;
+        const newOrder = {
+          id: Date.now(),
+          customerName: customerInfo.name,
+          customerPhone: customerInfo.phone,
+          address: customerInfo.address,
+          storeId: selectedStore.id,
+          items: cart,
+          subtotal,
+          deliveryFee,
+          serviceFee,
+          total: subtotal + deliveryFee + serviceFee,
+          status: 'pendiente',
+          cadeteId: null
+        };
+        setOrders([newOrder, ...orders]);
+        setCart([]);
+        alert("¡Pedido realizado con éxito! En breve el comercio lo confirmará.");
+      };
+
+      const handleRegisterSubmit = (e) => {
+        e.preventDefault();
+        if (regType === 'comercio') {
+          const newStore = {
+            id: Date.now(),
+            name: regName,
+            category: regCategory,
+            address: regAddress,
+            commissionRate: 10,
+            pending: true
+          };
+          setStores([...stores, newStore]);
+        } else {
+          const newCadete = {
+            id: Date.now(),
+            name: regName,
+            vehicle: regVehicle,
+            phone: regPhone,
+            pending: true
+          };
+          setCadetes([...cadetes, newCadete]);
+        }
+        setRegSubmitted(true);
+      };
+
+      const updateOrderStatus = (orderId, newStatus, cadeteId = null) => {
+        setOrders(orders.map(o => o.id === orderId ? { ...o, status: newStatus, cadeteId: cadeteId !== null ? cadeteId : o.cadeteId } : o));
+      };
+
+      const approveItem = (id, type) => {
+        if (type === 'comercio') {
+          setStores(stores.map(s => s.id === id ? { ...s, pending: false } : s));
+        } else {
+          setCadetes(cadetes.map(c => c.id === id ? { ...c, pending: false } : c));
+        }
+      };
+
+      return (
+        <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl min-w-[320px]">
+          {/* Header principal */}
+          <header className="bg-red-600 text-white p-4 sticky top-0 z-50 flex items-center justify-between shadow-md">
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">Catuna Pedidos</h1>
+              <p className="text-xs text-red-100">La red de delivery local</p>
+            </div>
+            <span className="bg-red-700 text-xs px-2.5 py-1 rounded-full uppercase font-bold tracking-wider">
+              {currentRole}
+            </span>
+          </header>
+
+          {/* Navegador de Roles */}
+          <nav className="bg-gray-800 text-white text-xs flex justify-around p-2 border-b border-gray-700">
+            <button onClick={() => setCurrentRole('cliente')} className={`py-1 px-2 rounded ${currentRole==='cliente'?'bg-red-600 font-bold':''}`}>Cliente</button>
+            <button onClick={() => setCurrentRole('comercio')} className={`py-1 px-2 rounded ${currentRole==='comercio'?'bg-red-600 font-bold':''}`}>Comercio</button>
+            <button onClick={() => setCurrentRole('cadete')} className={`py-1 px-2 rounded ${currentRole==='cadete'?'bg-red-600 font-bold':''}`}>Cadete</button>
+            <button onClick={() => setCurrentRole('admin')} className={`py-1 px-2 rounded ${currentRole==='admin'?'bg-red-600 font-bold':''}`}>Admin</button>
+            <button onClick={() => { setCurrentRole('registro'); setRegSubmitted(false); }} className={`py-1 px-2 rounded ${currentRole==='registro'?'bg-green-600 font-bold':'bg-green-700'}`}>+ Unirme</button>
+          </nav>
+
+          {/* CONTENIDO PRINCIPAL */}
+          <main className="flex-1 p-4 overflow-y-auto">
+
+            {/* VISTA CLIENTE */}
+            {currentRole === 'cliente' && (
+              <div className="space-y-6">
+                <h2 className="text-lg font-bold text-gray-800 border-b pb-2">Comercios Adheridos</h2>
+                <div className="space-y-3">
+                  {stores.filter(s => !s.pending).map(store => (
+                    <div key={store.id} className="border rounded-lg p-3 shadow-sm bg-gray-50">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-bold text-gray-900">{store.name}</h3>
+                          <p className="text-xs text-gray-500">{store.category} • {store.address}</p>
+                        </div>
+                        <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded font-semibold">Abierto</span>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        <p className="text-xs font-semibold text-gray-700">Menú:</p>
+                        {products.filter(p => p.storeId === store.id).map(prod => (
+                          <div key={prod.id} className="flex justify-between items-center text-sm bg-white p-2 rounded border">
+                            <div>
+                              <p className="font-medium text-gray-800">{prod.name}</p>
+                              <p className="text-xs text-gray-500">${prod.price}</p>
+                            </div>
+                            <button onClick={() => addToCart(prod, store)} className="bg-red-600 text-white text-xs px-2.5 py-1 rounded font-bold hover:bg-red-700">
+                              + Agregar
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* CARRITO */}
+                {cart.length > 0 && (
+                  <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t-2 border-red-600 p-4 shadow-2xl z-40">
+                    <h3 className="font-bold text-sm text-gray-800 mb-2">Tu Pedido ({selectedStore?.name})</h3>
+                    <div className="max-h-28 overflow-y-auto space-y-1 mb-3 text-xs border-b pb-2">
+                      {cart.map(item => (
+                        <div key={item.id} className="flex justify-between items-center">
+                          <span>{item.quantity}x {item.name}</span>
+                          <div className="space-x-2">
+                            <span>${item.price * item.quantity}</span>
+                            <button onClick={() => removeFromCart(item.id)} className="text-red-500 font-bold">✕</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <form onSubmit={handleCreateOrder} className="space-y-2">
+                      <input required placeholder="Tu Nombre" value={customerInfo.name} onChange={e=>setCustomerInfo({...customerInfo, name:e.target.value})} className="w-full text-xs p-2 border rounded" />
+                      <input required placeholder="Teléfono / WhatsApp" value={customerInfo.phone} onChange={e=>setCustomerInfo({...customerInfo, phone:e.target.value})} className="w-full text-xs p-2 border rounded" />
+                      <input required placeholder="Dirección de Entrega" value={customerInfo.address} onChange={e=>setCustomerInfo({...customerInfo, address:e.target.value})} className="w-full text-xs p-2 border rounded" />
+                      <button type="submit" className="w-full bg-red-600 text-white py-2 rounded font-bold text-sm shadow hover:bg-red-700">
+                        Confirmar Pedido (${cart.reduce((s,i)=>s+(i.price*i.quantity),0) + 1500})
+                      </button>
+                    </form>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* VISTA COMERCIO */}
+            {currentRole === 'comercio' && (
+              <div className="space-y-4">
+                <h2 className="text-lg font-bold text-gray-800 border-b pb-2">Panel del Comercio</h2>
+                <div className="space-y-3">
+                  {orders.length === 0 ? <p className="text-xs text-gray-500">No hay pedidos registrados.</p> : null}
+                  {orders.map(order => {
+                    const store = stores.find(s => s.id === order.storeId);
+                    return (
+                      <div key={order.id} className="border p-3 rounded-lg shadow-sm bg-gray-50 text-xs space-y-2">
+                        <div className="flex justify-between items-center border-b pb-1">
+                          <span className="font-bold text-gray-700">Pedido #{order.id.toString().slice(-4)}</span>
+                          <span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded font-bold uppercase">{order.status}</span>
+                        </div>
+                        <p><strong>Cliente:</strong> {order.customerName} ({order.customerPhone})</p>
+                        <p><strong>Dirección:</strong> {order.address}</p>
+                        <div className="bg-white p-2 border rounded">
+                          {order.items.map((it, idx) => <p key={idx}>{it.quantity}x {it.name} - ${it.price * it.quantity}</p>)}
+                        </div>
+                        <p className="font-bold text-right text-sm">Subtotal: ${order.subtotal}</p>
+                        <div className="flex gap-2 pt-1">
+                          {order.status === 'pendiente' && (
+                            <button onClick={()=>updateOrderStatus(order.id, 'preparando')} className="flex-1 bg-blue-600 text-white py-1.5 rounded font-bold">Aceptar y Preparar</button>
+                          )}
+                          {order.status === 'preparando' && (
+                            <button onClick={()=>updateOrderStatus(order.id, 'listo')} className="flex-1 bg-green-600 text-white py-1.5 rounded font-bold">Marcar Listo para Envío</button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* VISTA CADETE */}
+            {currentRole === 'cadete' && (
+              <div className="space-y-4">
+                <h2 className="text-lg font-bold text-gray-800 border-b pb-2">Panel de Envíos (Cadete)</h2>
+                <div className="space-y-3">
+                  {orders.filter(o => o.status === 'listo' || o.status === 'en_camino').map(order => (
+                    <div key={order.id} className="border p-3 rounded-lg bg-gray-50 text-xs space-y-2">
+                      <div className="flex justify-between items-center border-b pb-1">
+                        <span className="font-bold">Entrega #{order.id.toString().slice(-4)}</span>
+                        <span className="text-green-700 font-bold">Ganancia: ${order.deliveryFee}</span>
+                      </div>
+                      <p><strong>Retirar en:</strong> {stores.find(s=>s.id===order.storeId)?.name} ({stores.find(s=>s.id===order.storeId)?.address})</p>
+                      <p><strong>Entregar en:</strong> {order.address} ({order.customerName})</p>
+                      <p><strong>Cobrar al cliente:</strong> ${order.total}</p>
+                      {order.status === 'listo' && (
+                        <button onClick={()=>updateOrderStatus(order.id, 'en_camino', 1)} className="w-full bg-orange-500 text-white py-1.5 rounded font-bold">Tomar Pedido y Salir</button>
+                      )}
+                      {order.status === 'en_camino' && (
+                        <button onClick={()=>updateOrderStatus(order.id, 'entregado')} className="w-full bg-green-600 text-white py-1.5 rounded font-bold">Marcar Entregado</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* VISTA ADMIN */}
+            {currentRole === 'admin' && (
+              <div className="space-y-5 text-xs">
+                <h2 className="text-lg font-bold text-gray-800 border-b pb-2">Panel General de Administración</h2>
+                
+                {/* Solicitudes Pendientes */}
+                <div className="border p-3 rounded-lg bg-yellow-50 border-yellow-200">
+                  <h3 className="font-bold text-yellow-900 mb-2">Solicitudes Pendientes de Aprobación</h3>
+                  {stores.filter(s => s.pending).map(s => (
+                    <div key={s.id} className="flex justify-between items-center bg-white p-2 rounded mb-2 border">
+                      <div>
+                        <p className="font-bold">{s.name} (Comercio)</p>
+                        <p className="text-gray-500">{s.category} • {s.address}</p>
+                      </div>
+                      <button onClick={()=>approveItem(s.id, 'comercio')} className="bg-green-600 text-white px-2 py-1 rounded font-bold">Aprobar</button>
+                    </div>
+                  ))}
+                  {cadetes.filter(c => c.pending).map(c => (
+                    <div key={c.id} className="flex justify-between items-center bg-white p-2 rounded mb-2 border">
+                      <div>
+                        <p className="font-bold">{c.name} (Cadete)</p>
+                        <p className="text-gray-500">{c.vehicle} • Tel: {c.phone}</p>
+                      </div>
+                      <button onClick={()=>approveItem(c.id, 'cadete')} className="bg-green-600 text-white px-2 py-1 rounded font-bold">Aprobar</button>
+                    </div>
+                  ))}
+                  {stores.filter(s=>s.pending).length === 0 && cadetes.filter(c=>c.pending).length === 0 && (
+                    <p className="text-gray-500">No hay solicitudes pendientes.</p>
+                  )}
+                </div>
+
+                {/* Métricas */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-blue-50 p-3 rounded border text-center">
+                    <p className="text-gray-500">Pedidos Totales</p>
+                    <p className="text-lg font-bold text-blue-700">{orders.length}</p>
+                  </div>
+                  <div className="bg-green-50 p-3 rounded border text-center">
+                    <p className="text-gray-500">Comisiones App</p>
+                    <p className="text-lg font-bold text-green-700">
+                      ${orders.reduce((sum, o) => sum + (o.subtotal * 0.1) + o.serviceFee, 0)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* VISTA REGISTRO */}
+            {currentRole === 'registro' && (
+              <div className="space-y-4 text-xs">
+                <h2 className="text-lg font-bold text-gray-800 border-b pb-2">Únete a la Plataforma</h2>
+                {regSubmitted ? (
+                  <div className="bg-green-100 border border-green-400 text-green-800 p-4 rounded text-center space-y-2">
+                    <p className="font-bold text-sm">¡Solicitud enviada con éxito!</p>
+                    <p>El administrador revisará tus datos para activar tu cuenta a la brevedad.</p>
+                    <button onClick={()=>setCurrentRole('cliente')} className="bg-green-700 text-white px-4 py-1.5 rounded font-bold mt-2">Volver al Inicio</button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleRegisterSubmit} className="space-y-3">
+                    <div>
+                      <label className="font-bold text-gray-700 block mb-1">Quiero registrarme como:</label>
+                      <select value={regType} onChange={e=>setRegType(e.target.value)} className="w-full p-2 border rounded bg-white">
+                        <option value="comercio">Comercio / Negocio</option>
+                        <option value="cadete">Repartidor / Cadete</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="font-bold text-gray-700 block mb-1">Nombre Completo o del Negocio:</label>
+                      <input required value={regName} onChange={e=>setRegName(e.target.value)} placeholder="Ej. Pizzería Centro o Juan Pérez" className="w-full p-2 border rounded" />
+                    </div>
+                    <div>
+                      <label className="font-bold text-gray-700 block mb-1">Teléfono WhatsApp:</label>
+                      <input required value={regPhone} onChange={e=>setRegPhone(e.target.value)} placeholder="Ej. 3826123456" className="w-full p-2 border rounded" />
+                    </div>
+
+                    {regType === 'comercio' ? (
+                      <>
+                        <div>
+                          <label className="font-bold text-gray-700 block mb-1">Rubro:</label>
+                          <select value={regCategory} onChange={e=>setRegCategory(e.target.value)} className="w-full p-2 border rounded bg-white">
+                            <option value="Comidas">Comidas / Restaurante</option>
+                            <option value="Rotisería">Rotisería</option>
+                            <option value="Heladería">Heladería</option>
+                            <option value="Kiosco">Kiosco / Almacén</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="font-bold text-gray-700 block mb-1">Dirección del Local:</label>
+                          <input required value={regAddress} onChange={e=>setRegAddress(e.target.value)} placeholder="Ej. Av. San Martín 450" className="w-full p-2 border rounded" />
+                        </div>
+                      </>
+                    ) : (
+                      <div>
+                        <label className="font-bold text-gray-700 block mb-1">Vehículo:</label>
+                        <select value={regVehicle} onChange={e=>setRegVehicle(e.target.value)} className="w-full p-2 border rounded bg-white">
+                          <option value="Moto">Moto</option>
+                          <option value="Bicicleta">Bicicleta</option>
+                          <option value="Auto">Auto</option>
+                        </select>
+                      </div>
+                    )}
+
+                    <button type="submit" className="w-full bg-green-600 text-white py-2 rounded font-bold text-sm hover:bg-green-700 shadow">
+                      Enviar Solicitud de Registro
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
+
+          </main>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
