@@ -57,6 +57,7 @@
       const [orders, setOrders] = useState([]);
 
       const [searchTerm, setSearchTerm] = useState('');
+      const [orderPrepTimes, setOrderPrepTimes] = useState({});
 
       useEffect(() => {
         const unsubStores = db.collection('stores').onSnapshot(snapshot => {
@@ -370,7 +371,27 @@
         }
       };
 
+      // ESTABLECER TIEMPO ESTIMADO DE PREPARACIÓN
+      const handleSetPrepTime = async (orderId, customerPhone, customerName) => {
+        const prepMinutes = orderPrepTimes[orderId] || "30";
+        try {
+          await db.collection('orders').doc(orderId).update({ prepTime: prepMinutes });
+          alert(`Tiempo guardado (${prepMinutes} mins). Notifica al cliente por WhatsApp si lo deseas.`);
+          
+          const msg = `Hola ${customerName}! Tu pedido en Catuna Pedidos fue confirmado y estará listo / en camino en aproximadamente ${prepMinutes} minutos. ¡Gracias por tu compra!`;
+          window.open(`https://wa.me/549${customerPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+        } catch (err) {
+          alert("Error al actualizar tiempo: " + err.message);
+        }
+      };
+
       const addToCart = (product, store) => {
+        const onlineCadetesCount = cadetes.filter(c => c.isOnline).length;
+        if (onlineCadetesCount === 0) {
+          alert("⚠️ En este momento no hay cadetes en línea disponibles. Intenta más tarde.");
+          return;
+        }
+
         if (!store.isOpen) {
           alert("Este negocio está cerrado actualmente.");
           return;
@@ -416,6 +437,7 @@
             status: 'pendiente',
             cadeteId: null,
             storeSettled: false,
+            prepTime: 'Por calcular',
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
 
@@ -446,6 +468,8 @@
         return matchesStore || matchesProduct;
       });
 
+      const onlineCadetesCount = cadetes.filter(c => c.isOnline).length;
+
       return (
         <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl">
           <header className="bg-red-600 text-white p-4 sticky top-0 z-50 flex justify-between items-center shadow">
@@ -468,6 +492,15 @@
             {/* 1. VISTA CLIENTE */}
             {currentTab === 'cliente' && (
               <div className="space-y-4">
+                {/* INDICADOR DE CADETES ACTIVOS EN TIEMPO REAL */}
+                <div className={`p-2.5 rounded-lg border text-center text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm ${onlineCadetesCount > 0 ? 'bg-green-50 border-green-300 text-green-800' : 'bg-red-50 border-red-300 text-red-800'}`}>
+                  {onlineCadetesCount > 0 ? (
+                    <><span>🛵</span> <span>¡Hay {onlineCadetesCount} {onlineCadetesCount === 1 ? 'cadete activo' : 'cadetes activos'} listos para repartir!</span></>
+                  ) : (
+                    <><span>⚠️</span> <span>No hay cadetes activos en este momento. Pedidos pausados temporalmente.</span></>
+                  )}
+                </div>
+
                 {lastOrderSent && (
                   <div className="bg-green-50 border-2 border-green-500 p-3 rounded-lg text-center space-y-2 shadow-md">
                     <p className="font-bold text-green-900 text-sm">✅ ¡Pedido realizado a {lastOrderSent.storeName}!</p>
@@ -572,9 +605,9 @@
                                     <p className="text-xs font-extrabold text-gray-800">${calculatedPrice}</p>
                                     <button 
                                       onClick={() => addToCart(prod, store)} 
-                                      disabled={!store.isOpen}
-                                      className={`text-xs px-2.5 py-1 rounded font-bold ${store.isOpen ? 'bg-red-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>
-                                      {store.isOpen ? '+ Pedir' : 'Cerrado'}
+                                      disabled={!store.isOpen || onlineCadetesCount === 0}
+                                      className={`text-xs px-2.5 py-1 rounded font-bold ${store.isOpen && onlineCadetesCount > 0 ? 'bg-red-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>
+                                      {store.isOpen && onlineCadetesCount > 0 ? '+ Pedir' : 'No disponible'}
                                     </button>
                                   </div>
                                 </div>
@@ -634,7 +667,6 @@
                       <button onClick={()=>setLoggedStore(null)} className="text-red-600 font-bold underline">Salir</button>
                     </div>
 
-                    {/* RESUMEN FINANCIERO Y RENDICIÓN DE COMISIÓN PARA EL COMERCIO */}
                     {(() => {
                       const storeOrders = orders.filter(o => o.storeId === loggedStore.id && o.status === 'entregado' && !o.storeSettled);
                       const totalSales = storeOrders.reduce((sum, o) => sum + o.subtotal, 0);
@@ -709,6 +741,29 @@
                               </div>
 
                               <p className="text-gray-800 font-bold">Total a cobrar: ${Math.round(o.total)}</p>
+
+                              {/* ASIGNAR TIEMPO ESTIMADO DE DEMORA */}
+                              <div className="bg-yellow-50 border border-yellow-200 p-2 rounded space-y-1.5">
+                                <p className="font-bold text-yellow-900 text-[11px]">⏱️ Tiempo estimado de preparación:</p>
+                                <div className="flex gap-2 items-center">
+                                  <select 
+                                    value={orderPrepTimes[o.id] || o.prepTime || '30'}
+                                    onChange={(e) => setOrderPrepTimes({ ...orderPrepTimes, [o.id]: e.target.value })}
+                                    className="p-1 border rounded bg-white text-xs font-bold">
+                                    <option value="15">15 minutos</option>
+                                    <option value="20">20 minutos</option>
+                                    <option value="30">30 minutos</option>
+                                    <option value="45">45 minutos</option>
+                                    <option value="60">60 minutos</option>
+                                  </select>
+                                  <button 
+                                    onClick={() => handleSetPrepTime(o.id, o.customerPhone, o.customerName)}
+                                    className="bg-amber-600 text-white font-bold px-2 py-1 rounded text-[11px] shadow hover:bg-amber-700">
+                                    Guardar y Avisar
+                                  </button>
+                                </div>
+                                <p className="text-[10px] text-gray-500">Actual: <strong>{o.prepTime || 'Por calcular'}</strong></p>
+                              </div>
 
                               {assignedCadete ? (
                                 <div className="bg-blue-50 border border-blue-200 p-2 rounded space-y-2 mt-2">
@@ -991,8 +1046,8 @@
                     <form onSubmit={handleCreateCadete} className="border p-3 rounded bg-gray-50 space-y-2">
                       <h3 className="font-bold text-gray-800">Registrar Nuevo Cadete</h3>
                       <input required type="text" placeholder="Nombre completo" value={newCadeteName} onChange={e=>setNewCadeteName(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required type="text" placeholder="Teléfono WhatsApp (Ej: 3826123456)" value={newCadetePhone} onChange={e=>setNewCadetePhone(e.target.value)} className="w-full p-2 border rounded" />
-                      <select value={newCadeteVehicle} onChange={e=>setNewCadeteVehicle(e.target.value)} className="w-full p-2 border rounded bg-white">
+                      <input required type="text" placeholder="Teléfono WhatsApp (Ej: 3826123456)" value={newCadetePhone} onChange={e=>newCadetePhone(e.target.value)} className="w-full p-2 border rounded" />
+                      <select value={newCadeteVehicle} onChange={e=>newCadeteVehicle(e.target.value)} className="w-full p-2 border rounded bg-white">
                         <option value="Moto">Moto</option>
                         <option value="Bicicleta">Bicicleta</option>
                         <option value="Auto">Auto</option>
