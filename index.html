@@ -47,7 +47,7 @@
         banco: "Mercado Pago"
       };
 
-      const STORE_COMMISSION_PERCENT = 0.05; // Actualizado al 5%
+      const STORE_COMMISSION_PERCENT = 0.05; // 5% de comisión
       const APP_FEE = 300; 
       const BASE_DELIVERY_FEE = 1500; 
 
@@ -525,7 +525,7 @@
           await db.collection('orders').doc(orderId).update({ prepTime: prepMinutes });
           alert(`Tiempo guardado (${prepMinutes} mins). Notifica al cliente por WhatsApp si lo deseas.`);
           
-          const msg = `Hola ${customerName}! Tu pedido en Catuna Pedidos fue confirmado y estará listo / en camino en aproximadamente ${prepMinutes} minutos. ¡Gracias por tu compra!`;
+          const msg = `Hola ${customerName}! Tu pedido en Catuna Pedidos fue confirmedo y estará listo / en camino en aproximadamente ${prepMinutes} minutos. ¡Gracias por tu compra!`;
           window.open(`https://wa.me/549${customerPhone}?text=${encodeURIComponent(msg)}`, '_blank');
         } catch (err) {
           alert("Error al actualizar tiempo: " + err.message);
@@ -1049,7 +1049,6 @@
                       <button onClick={()=>setLoggedStore(null)} className="text-red-600 font-bold underline">Salir</button>
                     </div>
 
-                    {/* VISTA DE COMISIÓN PARA EL COMERCIO (AJUSTADA AL 5%) */}
                     <div className="border p-3 rounded bg-amber-50 border-amber-300 space-y-2 shadow-sm">
                       <div className="flex items-center gap-1.5 text-amber-900 font-extrabold text-sm">
                         <span>📅</span> <span>Estado de Comisión Semanal (5%)</span>
@@ -1362,6 +1361,43 @@
                       <button onClick={()=>setIsAdminLogged(false)} className="text-red-300 font-bold underline">Salir</button>
                     </div>
 
+                    {/* SECCIÓN REGISTRAR COMERCIO */}
+                    <form onSubmit={handleCreateStore} className="border p-3 rounded bg-red-50 border-red-200 space-y-2">
+                      <h3 className="font-bold text-red-900 text-sm">🏪 Registrar Nuevo Comercio</h3>
+                      <input required placeholder="Nombre del Comercio" value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <input required placeholder="Dirección" value={newStoreAddress} onChange={e=>setNewStoreAddress(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <input required placeholder="Teléfono / WhatsApp (Ej: 3826123456)" value={newStorePhone} onChange={e=>setNewStorePhone(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <input placeholder="Alias de Mercado Pago del Comercio" value={newStoreAlias} onChange={e=>setNewStoreAlias(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <input placeholder="Titular de la cuenta MP" value={newStoreTitular} onChange={e=>setNewStoreTitular(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <input placeholder="Horario de Atención (Ej: 08:00 a 23:00 hs)" value={newStoreHours} onChange={e=>setNewStoreHours(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input required placeholder="Usuario para entrar" value={newStoreUser} onChange={e=>setNewStoreUser(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                        <input required placeholder="Clave para entrar" value={newStorePass} onChange={e=>setNewStorePass(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      </div>
+                      <button type="submit" className="w-full bg-red-600 text-white py-2 rounded font-bold shadow hover:bg-red-700">
+                        Crear Comercio 🚀
+                      </button>
+                    </form>
+
+                    {/* SECCIÓN REGISTRAR CADETE */}
+                    <form onSubmit={handleCreateCadete} className="border p-3 rounded bg-blue-50 border-blue-200 space-y-2">
+                      <h3 className="font-bold text-blue-900 text-sm">🛵 Registrar Nuevo Cadete / Repartidor</h3>
+                      <input required placeholder="Nombre Completo del Cadete" value={newCadeteName} onChange={e=>setNewCadeteName(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <input required placeholder="Teléfono / WhatsApp (Ej: 3826123456)" value={newCadetePhone} onChange={e=>setNewCadetePhone(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <select value={newCadeteVehicle} onChange={e=>setNewCadeteVehicle(e.target.value)} className="w-full p-2 border rounded bg-white font-bold">
+                        <option value="Moto">Moto</option>
+                        <option value="Bicicleta">Bicicleta</option>
+                        <option value="Auto">Auto</option>
+                      </select>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input required placeholder="Usuario para entrar" value={newCadeteUser} onChange={e=>setNewCadeteUser(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                        <input required placeholder="Clave para entrar" value={newCadetePass} onChange={e=>setNewCadetePass(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      </div>
+                      <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold shadow hover:bg-blue-700">
+                        Crear Cadete 🛵
+                      </button>
+                    </form>
+
                     <div className="border p-3 rounded bg-orange-50 border-orange-200 space-y-2">
                       <h3 className="font-bold text-orange-900 text-sm">📊 Rendición de Comisiones (5% Semanal)</h3>
                       <p className="text-[11px] text-orange-800">Cuando el comercio te transfiera, haz clic en <strong>"Marcar como Cobrado"</strong> para saldar su deuda a $0.</p>
@@ -1466,8 +1502,18 @@
                       <h3 className="font-bold text-gray-800 text-sm">🏪 Comercios Registrados</h3>
                       {stores.map(store => (
                         <div key={store.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
-                          <p className="font-bold text-gray-800">{store.name}</p>
-                          <button onClick={() => handleDeleteStore(store.id, store.name)} className="bg-red-600 text-white font-bold px-2 py-1 rounded text-[10px]">🗑️</button>
+                          <div>
+                            <p className="font-bold text-gray-800">{store.name}</p>
+                            <p className="text-[10px] text-gray-500">Usuario: {store.user}</p>
+                          </div>
+                          <div className="flex gap-1">
+                            <button 
+                              onClick={() => handleToggleStoreSuspension(store.id, store.isSuspended)} 
+                              className={`font-bold px-2 py-1 rounded text-[10px] text-white ${store.isSuspended ? 'bg-green-600' : 'bg-orange-500'}`}>
+                              {store.isSuspended ? 'Activar' : 'Pausar'}
+                            </button>
+                            <button onClick={() => handleDeleteStore(store.id, store.name)} className="bg-red-600 text-white font-bold px-2 py-1 rounded text-[10px]">🗑️</button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1478,9 +1524,16 @@
                         <div key={cadete.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
                           <div>
                             <p className="font-bold text-gray-800">{cadete.name} ({cadete.vehicle})</p>
-                            <p className="text-gray-500 text-[10px]">Saldo: ${cadete.balance || 0}</p>
+                            <p className="text-gray-500 text-[10px]">Saldo: ${cadete.balance || 0} | Usuario: {cadete.user}</p>
                           </div>
-                          <button onClick={() => handleDeleteCadete(cadete.id, cadete.name)} className="bg-red-600 text-white font-bold px-2 py-1 rounded text-[10px]">🗑️</button>
+                          <div className="flex gap-1">
+                            <button 
+                              onClick={() => handleToggleCadeteSuspension(cadete.id, cadete.isSuspended)} 
+                              className={`font-bold px-2 py-1 rounded text-[10px] text-white ${cadete.isSuspended ? 'bg-green-600' : 'bg-orange-500'}`}>
+                              {cadete.isSuspended ? 'Activar' : 'Pausar'}
+                            </button>
+                            <button onClick={() => handleDeleteCadete(cadete.id, cadete.name)} className="bg-red-600 text-white font-bold px-2 py-1 rounded text-[10px]">🗑️</button>
+                          </div>
                         </div>
                       ))}
                     </div>
