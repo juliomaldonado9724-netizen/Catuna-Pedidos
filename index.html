@@ -58,6 +58,13 @@
 
       const [searchTerm, setSearchTerm] = useState('');
       const [orderPrepTimes, setOrderPrepTimes] = useState({});
+      const [currentTime, setCurrentTime] = useState(Date.now());
+
+      // RELOJ EN VIVO PARA ACTUALIZAR LOS CONTADORES DE LAS PROMOS CADA SEGUNDO
+      useEffect(() => {
+        const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
+        return () => clearInterval(timer);
+      }, []);
 
       useEffect(() => {
         const unsubStores = db.collection('stores').onSnapshot(snapshot => {
@@ -133,7 +140,8 @@
       const [prodPrice, setProdPrice] = useState('');
       const [prodUnit, setProdUnit] = useState('Unidad');
       const [prodCategory, setProdCategory] = useState('General');
-      const [prodIsPromo, setProdIsPromo] = useState(false); // NUEVO: MARCADOR DE PROMOCIÓN
+      const [prodIsPromo, setProdIsPromo] = useState(false);
+      const [prodPromoHours, setProdPromoHours] = useState('24'); // DURACIÓN EN HORAS DE LA PROMO
       const [prodDesc, setProdDesc] = useState('');
       const [prodImg, setProdImg] = useState('');
       const [isCompressing, setIsCompressing] = useState(false);
@@ -319,6 +327,14 @@
           alert("Espera un segundo mientras se procesa la foto...");
           return;
         }
+
+        // Calcular fecha exacta de expiración si es promoción
+        let promoExpiresAt = null;
+        if (prodIsPromo) {
+          const hours = Number(prodPromoHours) || 24;
+          promoExpiresAt = Date.now() + (hours * 60 * 60 * 1000);
+        }
+
         try {
           await db.collection('products').add({
             storeId: loggedStore.id, 
@@ -326,12 +342,13 @@
             price: Number(prodPrice) || 0, 
             unit: prodUnit || 'Unidad',
             category: prodCategory || 'General',
-            isPromo: prodIsPromo, // GUARDAR ESTADO DE PROMOCIÓN
+            isPromo: prodIsPromo,
+            promoExpiresAt: promoExpiresAt, // TIEMPO DE EXPIRACIÓN EN MILISEGUNDOS
             description: prodDesc, 
             image: prodImg || 'https://via.placeholder.com/150',
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
-          setProdName(''); setProdPrice(''); setProdUnit('Unidad'); setProdCategory('General'); setProdIsPromo(false); setProdDesc(''); setProdImg('');
+          setProdName(''); setProdPrice(''); setProdUnit('Unidad'); setProdCategory('General'); setProdIsPromo(false); setProdPromoHours('24'); setProdDesc(''); setProdImg('');
           alert("Producto guardado con éxito en la nube.");
         } catch (err) {
           alert("Error al guardar producto: " + err.message);
@@ -510,12 +527,30 @@
 
       const onlineCadetesCount = cadetes.filter(c => c.isOnline).length;
 
-      // OBTENER TODAS LAS PROMOCIONES ACTIVAS DE LOCALES ABIERTOS
+      // FILTRAR PROMOS ACTIVAS Y NO EXPIRADAS
       const promoProducts = products.filter(p => {
         if (!p.isPromo) return false;
+        if (p.promoExpiresAt && currentTime > p.promoExpiresAt) return false; // Ya expiró
         const store = stores.find(s => s.id === p.storeId);
         return store && store.isOpen;
       });
+
+      // FUNCIÓN PARA FORMATEAR EL TIEMPO RESTANTE
+      const getTimeLeftString = (expiresAt) => {
+        if (!expiresAt) return "Por tiempo limitado";
+        const diff = expiresAt - currentTime;
+        if (diff <= 0) return "Expirando...";
+        
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+        if (hours > 24) {
+          const days = Math.floor(hours / 24);
+          return `Quedan ${days}d ${hours % 24}h`;
+        }
+        return `⏳ ${hours}h ${minutes}m ${seconds}s`;
+      };
 
       return (
         <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl">
@@ -561,13 +596,13 @@
                   </div>
                 )}
 
-                {/* NUEVA SECCIÓN EXCLUSIVA DE PROMOCIONES Y OFERTAS */}
+                {/* SECCIÓN EXCLUSIVA DE PROMOCIONES CON CONTADOR EN VIVO */}
                 {promoProducts.length > 0 && (
                   <div className="bg-gradient-to-r from-red-50 to-amber-50 border-2 border-red-400 p-3 rounded-xl shadow-sm space-y-2">
                     <h2 className="font-extrabold text-red-700 text-sm flex items-center gap-1.5">
                       🔥 ¡Promociones y Ofertas del Día! 🔥
                     </h2>
-                    <p className="text-[11px] text-gray-600">Aprovecha los descuentos directos sin buscar local por local:</p>
+                    <p className="text-[11px] text-gray-600">Aprovecha antes de que finalice el contador:</p>
                     
                     <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
                       {promoProducts.map(prod => {
@@ -576,12 +611,12 @@
                         const calculatedPrice = Math.round(prod.price * (Number(currentQty) || 1));
 
                         return (
-                          <div key={prod.id} className="min-w-[180px] max-w-[180px] bg-white p-2 rounded-lg border border-red-200 shadow-sm flex flex-col justify-between flex-shrink-0">
+                          <div key={prod.id} className="min-w-[190px] max-w-[190px] bg-white p-2 rounded-lg border border-red-200 shadow-sm flex flex-col justify-between flex-shrink-0">
                             <div>
                               <div className="relative">
                                 <img src={prod.image} className="w-full h-24 object-cover rounded bg-gray-200" alt={prod.name} />
                                 <span className="absolute top-1 right-1 bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow">
-                                  OFERTA
+                                  {getTimeLeftString(prod.promoExpiresAt)}
                                 </span>
                               </div>
                               <p className="font-bold text-xs text-gray-800 mt-1 truncate">{prod.name}</p>
@@ -692,7 +727,9 @@
                                       <div className="flex-1">
                                         <div className="flex items-center gap-1.5">
                                           <p className="font-bold text-sm text-gray-800">{prod.name}</p>
-                                          {prod.isPromo && <span className="bg-red-100 text-red-700 font-extrabold text-[9px] px-1 py-0.5 rounded">🔥 PROMO</span>}
+                                          {prod.isPromo && (!prod.promoExpiresAt || currentTime <= prod.promoExpiresAt) && (
+                                            <span className="bg-red-100 text-red-700 font-extrabold text-[9px] px-1 py-0.5 rounded">🔥 PROMO</span>
+                                          )}
                                         </div>
                                         <p className="text-xs text-gray-500">{prod.description}</p>
                                         <p className="text-xs font-bold text-red-600 mt-0.5">${prod.price} <span className="text-[10px] text-gray-400">/ {prod.unit || 'Unidad'}</span></p>
@@ -928,7 +965,7 @@
                     </div>
 
                     <form onSubmit={handleAddProduct} className="border p-3 rounded bg-gray-50 space-y-3">
-                      <h3 className="font-bold text-gray-800">Cargar Producto al Catálogo (con foto y categoría)</h3>
+                      <h3 className="font-bold text-gray-800">Cargar Producto al Catálogo (con foto, categoría y promo con tiempo)</h3>
                       <input required placeholder="Nombre del producto (Ej: Bife de chorizo, Coca 2L)" value={prodName} onChange={e=>setProdName(e.target.value)} className="w-full p-2 border rounded" />
                       
                       <div className="grid grid-cols-2 gap-2">
@@ -960,18 +997,34 @@
                         </select>
                       </div>
 
-                      {/* CHECKBOX PARA DESTACAR COMO PROMOCIÓN */}
-                      <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 p-2 rounded">
-                        <input 
-                          type="checkbox" 
-                          id="promoCheck" 
-                          checked={prodIsPromo} 
-                          onChange={(e) => setProdIsPromo(e.target.checked)} 
-                          className="w-4 h-4 text-red-600 rounded"
-                        />
-                        <label htmlFor="promoCheck" className="text-[11px] font-bold text-amber-900 cursor-pointer">
-                          🔥 Destacar como Oferta / Promoción Semanal o del Día
-                        </label>
+                      {/* CONFIGURACIÓN DE PROMOCIÓN Y TIEMPO */}
+                      <div className="bg-amber-50 border border-amber-200 p-2.5 rounded space-y-2">
+                        <div className="flex items-center gap-2">
+                          <input 
+                            type="checkbox" 
+                            id="promoCheck" 
+                            checked={prodIsPromo} 
+                            onChange={(e) => setProdIsPromo(e.target.checked)} 
+                            className="w-4 h-4 text-red-600 rounded"
+                          />
+                          <label htmlFor="promoCheck" className="text-[11px] font-bold text-amber-900 cursor-pointer">
+                            🔥 Marcar como Oferta / Promoción Destacada
+                          </label>
+                        </div>
+
+                        {prodIsPromo && (
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-700 mb-1">Duración de la promoción (¿Cuánto tiempo estará activa?):</label>
+                            <select value={prodPromoHours} onChange={e=>setProdPromoHours(e.target.value)} className="w-full p-1.5 border rounded bg-white text-xs font-bold text-red-600">
+                              <option value="6">6 horas</option>
+                              <option value="12">12 horas</option>
+                              <option value="24">24 horas (1 día)</option>
+                              <option value="48">48 horas (2 días)</option>
+                              <option value="72">72 horas (3 días)</option>
+                              <option value="168">1 semana</option>
+                            </select>
+                          </div>
+                        )}
                       </div>
 
                       <input placeholder="Descripción breve (Opcional)" value={prodDesc} onChange={e=>setProdDesc(e.target.value)} className="w-full p-2 border rounded" />
