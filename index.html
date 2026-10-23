@@ -359,8 +359,8 @@
         }
       };
 
-      const handleResetStoreCommission = async (storeId) => {
-        if (confirm("¿Confirmas que el comercio te abonó la comisión semanal? Esto pondrá su saldo deudor en $0.")) {
+      const handleResetStoreCommission = async (storeId, storeName) => {
+        if (confirm(`¿Confirmas que el comercio "${storeName}" te abonó la comisión semanal? Esto pondrá su saldo deudor en $0.`)) {
           try {
             const batch = db.batch();
             const storeOrders = orders.filter(o => {
@@ -372,7 +372,7 @@
               batch.update(ref, { storeSettled: true });
             });
             await batch.commit();
-            alert("¡Comisión rendida con éxito! Saldo saldado.");
+            alert("¡Comisión marcada como cobrada con éxito! Saldo del comercio saldado en $0.");
           } catch (err) {
             alert("Error al saldar cuentas: " + err.message);
           }
@@ -1049,12 +1049,13 @@
                       <button onClick={()=>setLoggedStore(null)} className="text-red-600 font-bold underline">Salir</button>
                     </div>
 
+                    {/* VISTA DE COMISIÓN PARA EL COMERCIO (SOLO LECTURA DE DEUDA) */}
                     <div className="border p-3 rounded bg-amber-50 border-amber-300 space-y-2 shadow-sm">
                       <div className="flex items-center gap-1.5 text-amber-900 font-extrabold text-sm">
-                        <span>📅</span> <span>Rendición de Comisión Semanal (Domingos)</span>
+                        <span>📅</span> <span>Estado de Comisión Semanal (Domingos)</span>
                       </div>
                       <p className="text-amber-800 text-[11px]">
-                        Recuerda que <strong>todos los domingos</strong> debes abonar el 10% de tus ventas acumuladas al Administrador mediante transferencia a su Alias.
+                        Recuerda que <strong>todos los domingos</strong> debes abonar el 10% de tus ventas acumuladas al Administrador.
                       </p>
 
                       {(() => {
@@ -1089,18 +1090,11 @@
                               </div>
                             </div>
 
-                            <div className="bg-white p-2.5 rounded border flex justify-between items-center">
-                              <div>
-                                <p className="text-xs text-amber-900 font-bold">Comisión 10% a abonar:</p>
-                                <p className="text-sm font-extrabold text-red-600">${commissionDue}</p>
-                                <p className="text-[10px] text-gray-500">Alias Admin: <span className="font-mono font-bold select-all">{ADMIN_PAYMENT_INFO.alias}</span></p>
-                              </div>
-                              <button 
-                                onClick={() => handleResetStoreCommission(loggedStore.id)}
-                                disabled={commissionDue === 0}
-                                className={`px-3 py-1.5 rounded font-bold text-white text-xs ${commissionDue > 0 ? 'bg-green-600 shadow hover:bg-green-700' : 'bg-gray-300 cursor-not-allowed'}`}>
-                                {commissionDue > 0 ? 'Saldar Cuenta' : 'Al día'}
-                              </button>
+                            <div className="bg-white p-2.5 rounded border space-y-1">
+                              <p className="text-xs text-amber-900 font-bold">Comisión 10% adeudada al Admin:</p>
+                              <p className="text-base font-extrabold text-red-600">${commissionDue}</p>
+                              <p className="text-[10px] text-gray-600">Para abonar, transfiere al Alias del Admin: <span className="font-mono font-bold select-all text-gray-900">{ADMIN_PAYMENT_INFO.alias}</span> ({ADMIN_PAYMENT_INFO.banco})</p>
+                              <p className="text-[10px] text-gray-400 italic">Una vez que el Administrador confirme tu pago, tu deuda se pondrá en $0 automáticamente.</p>
                             </div>
                           </div>
                         );
@@ -1369,7 +1363,9 @@
                     </div>
 
                     <div className="border p-3 rounded bg-orange-50 border-orange-200 space-y-2">
-                      <h3 className="font-bold text-orange-900 text-sm">📊 Rendición de Comisiones (Cierre Dominical)</h3>
+                      <h3 className="font-bold text-orange-900 text-sm">📊 Rendición de Comisiones (Cierre Semanal)</h3>
+                      <p className="text-[11px] text-orange-800">Cuando el comercio te transfiera, haz clic en <strong>"Marcar como Cobrado"</strong> para saldar su deuda a $0.</p>
+                      
                       {stores.map(store => {
                         const storeOrders = orders.filter(o => {
                           const hasStore = o.storeId === store.id || (o.storesInvolved && o.storesInvolved.includes(store.id));
@@ -1394,17 +1390,16 @@
                               <p className="text-orange-700 font-bold">Comisión 10%: ${commissionDue}</p>
                             </div>
                             <button 
-                              onClick={()=>handleResetStoreCommission(store.id)}
+                              onClick={()=>handleResetStoreCommission(store.id, store.name)}
                               disabled={commissionDue === 0}
-                              className={`px-2.5 py-1.5 rounded font-bold text-white ${commissionDue > 0 ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-300 cursor-not-allowed'}`}>
-                              Cobrado
+                              className={`px-2.5 py-1.5 rounded font-bold text-white ${commissionDue > 0 ? 'bg-green-600 hover:bg-green-700 shadow' : 'bg-gray-300 cursor-not-allowed'}`}>
+                              {commissionDue > 0 ? '✅ Marcar como Cobrado' : 'Al día'}
                             </button>
                           </div>
                         );
                       })}
                     </div>
 
-                    {/* NUEVA SECCIÓN: AGENDA DE WHATSAPP Y ALIAS DE COMERCIOS */}
                     <div className="border p-3 rounded bg-green-50 border-green-200 space-y-2">
                       <h3 className="font-bold text-green-900 text-sm">📱 Agenda de WhatsApp y Alias de Comercios</h3>
                       <p className="text-[11px] text-green-800">Números directos de los comercios para coordinar la comisión o comunicarte:</p>
