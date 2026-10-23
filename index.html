@@ -438,10 +438,11 @@
         }
       };
 
-      const handleDeleteProduct = async (id) => {
-        if (confirm("¿Seguro deseas eliminar este producto?")) {
+      const handleDeleteProduct = async (id, name) => {
+        if (confirm(`¿Seguro deseas eliminar "${name}" de tu catálogo?`)) {
           try {
             await db.collection('products').doc(id).delete();
+            alert("Producto eliminado con éxito.");
           } catch (err) {
             alert("Error al eliminar: " + err.message);
           }
@@ -525,7 +526,7 @@
           await db.collection('orders').doc(orderId).update({ prepTime: prepMinutes });
           alert(`Tiempo guardado (${prepMinutes} mins). Notifica al cliente por WhatsApp si lo deseas.`);
           
-          const msg = `Hola ${customerName}! Tu pedido en Catuna Pedidos fue confirmedo y estará listo / en camino en aproximadamente ${prepMinutes} minutos. ¡Gracias por tu compra!`;
+          const msg = `Hola ${customerName}! Tu pedido en Catuna Pedidos fue confirmado y estará listo / en camino en aproximadamente ${prepMinutes} minutos. ¡Gracias por tu compra!`;
           window.open(`https://wa.me/549${customerPhone}?text=${encodeURIComponent(msg)}`, '_blank');
         } catch (err) {
           alert("Error al actualizar tiempo: " + err.message);
@@ -1227,6 +1228,31 @@
 
                       <button type="submit" disabled={isCompressing} className="w-full bg-green-600 text-white py-2 rounded font-bold">Guardar Producto</button>
                     </form>
+
+                    {/* SECCIÓN RECUPERADA: HISTORIAL / LISTADO DE PRODUCTOS CARGADOS POR EL COMERCIO */}
+                    <div className="border p-3 rounded bg-gray-50 space-y-2 mt-4">
+                      <h3 className="font-bold text-gray-800 text-sm">📦 Tus Productos Cargados</h3>
+                      {products.filter(p => p.storeId === loggedStore.id).length === 0 ? (
+                        <p className="text-gray-500 italic text-[11px]">No has cargado ningún producto aún.</p>
+                      ) : (
+                        products.filter(p => p.storeId === loggedStore.id).map(prod => (
+                          <div key={prod.id} className="flex justify-between items-center bg-white p-2 rounded border shadow-sm">
+                            <div className="flex items-center gap-2">
+                              <img src={prod.image} className="w-10 h-10 object-cover rounded bg-gray-200" alt={prod.name} />
+                              <div>
+                                <p className="font-bold text-gray-800 text-xs">{prod.name}</p>
+                                <p className="text-[10px] text-gray-500">${prod.price} / {prod.unit || 'Unid.'} | <span className="text-red-600 font-semibold">{prod.category || 'General'}</span></p>
+                              </div>
+                            </div>
+                            <button 
+                              onClick={() => handleDeleteProduct(prod.id, prod.name)} 
+                              className="bg-red-600 text-white font-bold px-2 py-1 rounded text-[10px] shadow hover:bg-red-700">
+                              🗑️ Eliminar
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
