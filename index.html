@@ -202,7 +202,7 @@
       const [custPhone, setCustPhone] = useState('');
       const [custAddress, setCustAddress] = useState('');
       const [custCoords, setCustCoords] = useState(null);
-      const [paymentMethod, setPaymentMethod] = useState('Efectivo'); // NUEVO: MÉTODO DE PAGO (Efectivo / Transferencia)
+      const [paymentMethod, setPaymentMethod] = useState('Efectivo');
       const [isGettingLocation, setIsGettingLocation] = useState(false);
       const [lastOrderSent, setLastOrderSent] = useState(null);
 
@@ -602,7 +602,7 @@
             customerPhone: custPhone,
             address: custAddress,
             coords: custCoords || null,
-            paymentMethod: paymentMethod, // GUARDAR MÉTODO DE PAGO
+            paymentMethod: paymentMethod,
             items: cart,
             deliveryFee: totalDeliveryFee,
             subtotal,
@@ -995,7 +995,6 @@
                           )}
                         </div>
 
-                        {/* SELECTOR DE MÉTODO DE PAGO */}
                         <div className="bg-amber-50 border border-amber-300 p-2.5 rounded space-y-1.5">
                           <label className="block text-xs font-bold text-amber-900">💵 Selecciona la Forma de Pago:</label>
                           <div className="grid grid-cols-2 gap-2">
@@ -1405,6 +1404,34 @@
                       })}
                     </div>
 
+                    {/* SECCIÓN RECUPERADA: CARGAR SALDO A CADETES */}
+                    <div className="border p-3 rounded bg-blue-50 border-blue-200 space-y-3">
+                      <h3 className="font-bold text-blue-900 text-sm">🛵 Recargar Saldo a Cadete</h3>
+                      <form onSubmit={handleRechargeBalance} className="space-y-2">
+                        <select 
+                          required 
+                          value={selectedCadeteId} 
+                          onChange={(e)=>setSelectedCadeteId(e.target.value)} 
+                          className="w-full p-2 border rounded bg-white text-xs font-bold">
+                          <option value="">Seleccionar Cadete...</option>
+                          {cadetes.map(c => (
+                            <option key={c.id} value={c.id}>{c.name} (Saldo actual: ${c.balance || 0})</option>
+                          ))}
+                        </select>
+                        <input 
+                          required 
+                          type="number" 
+                          placeholder="Monto a recargar ($)" 
+                          value={rechargeAmount} 
+                          onChange={(e)=>setRechargeAmount(e.target.value)} 
+                          className="w-full p-2 border rounded bg-white" 
+                        />
+                        <button type="submit" className="w-full bg-blue-600 text-white py-1.5 rounded font-bold shadow">
+                          Acreditar Saldo ➕
+                        </button>
+                      </form>
+                    </div>
+
                     <form onSubmit={handlePublishAnnouncement} className="border p-3 rounded bg-amber-50 border-amber-300 space-y-2">
                       <h3 className="font-bold text-amber-900 text-sm">📢 Anuncio Global para Clientes</h3>
                       <input placeholder="Ej: ¡Hoy horario especial por feriado!" value={announcementInput} onChange={e=>setAnnouncementInput(e.target.value)} className="w-full p-2 border rounded bg-white" />
@@ -1420,6 +1447,19 @@
                         <div key={store.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
                           <p className="font-bold text-gray-800">{store.name}</p>
                           <button onClick={() => handleDeleteStore(store.id, store.name)} className="bg-red-600 text-white font-bold px-2 py-1 rounded text-[10px]">🗑️</button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="border p-3 rounded bg-gray-50 space-y-2">
+                      <h3 className="font-bold text-gray-800 text-sm">🛵 Cadetes Registrados</h3>
+                      {cadetes.map(cadete => (
+                        <div key={cadete.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
+                          <div>
+                            <p className="font-bold text-gray-800">{cadete.name} ({cadete.vehicle})</p>
+                            <p className="text-gray-500 text-[10px]">Saldo: ${cadete.balance || 0}</p>
+                          </div>
+                          <button onClick={() => handleDeleteCadete(cadete.id, cadete.name)} className="bg-red-600 text-white font-bold px-2 py-1 rounded text-[10px]">🗑️</button>
                         </div>
                       ))}
                     </div>
