@@ -489,7 +489,7 @@
           await db.collection('cadetes').doc(loggedCadete.id).update({ balance: newBalance });
           await db.collection('orders').doc(orderId).update({ status: 'en_camino', cadeteId: loggedCadete.id });
           setLoggedCadete({ ...loggedCadete, balance: newBalance });
-          alert("¡Envío aceptado! Se te notificará al cliente que su pedido ya va en camino.");
+          alert("¡Envío aceptado! Se le notificará al cliente en la app que su pedido ya va en camino.");
         } catch (err) {
           alert("Error al aceptar envío: " + err.message);
         }
@@ -606,13 +606,11 @@
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
 
-          // NOTIFICAR A CADA COMERCIO INVOLUCRADO MEDIANTE UN BOTÓN O UN ENLACE DE WHATSAPP INDIVIDUAL
-          // Nota: Guardamos la lista en el estado para que el cliente pueda abrir el WhatsApp de cada local de forma segura.
           setLastOrderId(docRef.id);
           setCart([]);
           setIsCartOpen(false);
           setCustName(''); setCustPhone(''); setCustAddress(''); setCustCoords(null); setPaymentMethod('Efectivo');
-          alert("¡Pedido enviado con éxito! Revisa los botones de WhatsApp para notificar a cada comercio.");
+          alert("¡Pedido enviado con éxito! Notifica a cada comercio por WhatsApp usando los botones.");
         } catch (err) {
           alert("Error al enviar pedido: " + err.message);
         }
@@ -690,21 +688,29 @@
             {currentTab === 'cliente' && (
               <div className="space-y-4">
                 
-                {/* TRACKING EN TIEMPO REAL DEL PEDIDO PARA EL CLIENTE */}
+                {/* TRACKING EN TIEMPO REAL CON CLARIFICACIÓN DE ESTADOS (TIRADO / EN CAMINO) */}
                 {activeLiveOrder && activeLiveOrder.status !== 'entregado' && activeLiveOrder.status !== 'cancelado_por_tiempo' && (
                   <div className={`p-4 rounded-xl border-2 text-center space-y-3 shadow-lg transition-all ${activeLiveOrder.status === 'en_camino' ? 'bg-green-50 border-green-500 animate-pulse' : 'bg-orange-50 border-orange-400'}`}>
-                    <div className="flex items-center justify-center gap-2">
-                      <span className="text-xl">{activeLiveOrder.status === 'en_camino' ? '🛵' : '⏳'}</span>
-                      <h3 className="font-extrabold text-sm text-gray-900">
-                        {activeLiveOrder.status === 'en_camino' ? '¡TU PEDIDO YA VA EN CAMINO!' : 'TU PEDIDO SE ESTÁ PREPARANDO'}
-                      </h3>
+                    
+                    {/* AVISO CLARO DEL ESTADO ACTUAL */}
+                    <div className="bg-white p-2.5 rounded-lg border shadow-sm space-y-1">
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="text-xl">{activeLiveOrder.status === 'en_camino' ? '🛵' : '⏳'}</span>
+                        <h3 className="font-extrabold text-xs text-gray-900 uppercase">
+                          {activeLiveOrder.status === 'en_camino' ? '¡El cadete ya aceptó y va en camino!' : 'Pedido tirado / enviado (Esperando Cadete)'}
+                        </h3>
+                      </div>
+                      <p className="text-[11px] text-gray-600">
+                        {activeLiveOrder.status === 'en_camino' 
+                          ? '📢 Notificación en app: El repartidor retiró los productos y se dirige a tu domicilio.'
+                          : '📢 Notificación en app: Tu pedido fue registrado con éxito y está a la espera de que un cadete lo tome.'}
+                      </p>
                     </div>
 
                     <p className="text-xs text-gray-700">
                       Total a pagar: <strong>${activeLiveOrder.total}</strong> ({activeLiveOrder.paymentMethod})
                     </p>
 
-                    {/* BOTONES DE WHATSAPP INDIVIDUALES PARA CADA COMERCIO INVOLUCRADO */}
                     {activeLiveOrder.storesList && (
                       <div className="bg-white p-2.5 rounded-lg border border-orange-200 text-left text-xs space-y-2 shadow-sm">
                         <p className="font-bold text-orange-900">🔔 Notifica a cada comercio por WhatsApp:</p>
@@ -749,7 +755,7 @@
                       </div>
                     ) : (
                       <p className="text-[11px] text-orange-800 italic">
-                        Esperando que el repartidor acepte la ruta y retire tus productos...
+                        Esperando que el repartidor acepte la ruta en la app...
                       </p>
                     )}
 
