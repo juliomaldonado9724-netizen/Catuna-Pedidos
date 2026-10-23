@@ -133,6 +133,7 @@
       const [prodPrice, setProdPrice] = useState('');
       const [prodUnit, setProdUnit] = useState('Unidad');
       const [prodCategory, setProdCategory] = useState('General');
+      const [prodIsPromo, setProdIsPromo] = useState(false); // NUEVO: MARCADOR DE PROMOCIÓN
       const [prodDesc, setProdDesc] = useState('');
       const [prodImg, setProdImg] = useState('');
       const [isCompressing, setIsCompressing] = useState(false);
@@ -325,11 +326,12 @@
             price: Number(prodPrice) || 0, 
             unit: prodUnit || 'Unidad',
             category: prodCategory || 'General',
+            isPromo: prodIsPromo, // GUARDAR ESTADO DE PROMOCIÓN
             description: prodDesc, 
             image: prodImg || 'https://via.placeholder.com/150',
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
-          setProdName(''); setProdPrice(''); setProdUnit('Unidad'); setProdCategory('General'); setProdDesc(''); setProdImg('');
+          setProdName(''); setProdPrice(''); setProdUnit('Unidad'); setProdCategory('General'); setProdIsPromo(false); setProdDesc(''); setProdImg('');
           alert("Producto guardado con éxito en la nube.");
         } catch (err) {
           alert("Error al guardar producto: " + err.message);
@@ -508,6 +510,13 @@
 
       const onlineCadetesCount = cadetes.filter(c => c.isOnline).length;
 
+      // OBTENER TODAS LAS PROMOCIONES ACTIVAS DE LOCALES ABIERTOS
+      const promoProducts = products.filter(p => {
+        if (!p.isPromo) return false;
+        const store = stores.find(s => s.id === p.storeId);
+        return store && store.isOpen;
+      });
+
       return (
         <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl">
           <header className="bg-red-600 text-white p-4 sticky top-0 z-50 flex justify-between items-center shadow">
@@ -549,6 +558,55 @@
                       💬 Enviar Comprobante por WhatsApp
                     </a>
                     <button onClick={() => setLastOrderSent(null)} className="text-[11px] text-gray-500 underline">Cerrar aviso</button>
+                  </div>
+                )}
+
+                {/* NUEVA SECCIÓN EXCLUSIVA DE PROMOCIONES Y OFERTAS */}
+                {promoProducts.length > 0 && (
+                  <div className="bg-gradient-to-r from-red-50 to-amber-50 border-2 border-red-400 p-3 rounded-xl shadow-sm space-y-2">
+                    <h2 className="font-extrabold text-red-700 text-sm flex items-center gap-1.5">
+                      🔥 ¡Promociones y Ofertas del Día! 🔥
+                    </h2>
+                    <p className="text-[11px] text-gray-600">Aprovecha los descuentos directos sin buscar local por local:</p>
+                    
+                    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+                      {promoProducts.map(prod => {
+                        const store = stores.find(s => s.id === prod.storeId);
+                        const currentQty = selectedQtyMap[prod.id] !== undefined ? selectedQtyMap[prod.id] : 1;
+                        const calculatedPrice = Math.round(prod.price * (Number(currentQty) || 1));
+
+                        return (
+                          <div key={prod.id} className="min-w-[180px] max-w-[180px] bg-white p-2 rounded-lg border border-red-200 shadow-sm flex flex-col justify-between flex-shrink-0">
+                            <div>
+                              <div className="relative">
+                                <img src={prod.image} className="w-full h-24 object-cover rounded bg-gray-200" alt={prod.name} />
+                                <span className="absolute top-1 right-1 bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow">
+                                  OFERTA
+                                </span>
+                              </div>
+                              <p className="font-bold text-xs text-gray-800 mt-1 truncate">{prod.name}</p>
+                              <p className="text-[10px] text-gray-500 truncate">🏪 {store?.name}</p>
+                              <p className="text-xs font-extrabold text-red-600 mt-0.5">${prod.price} <span className="text-[9px] text-gray-400">/ {prod.unit || 'Unid.'}</span></p>
+                            </div>
+
+                            <div className="mt-2 pt-1 border-t flex items-center justify-between">
+                              <input 
+                                type="number" 
+                                min="0.1" 
+                                value={currentQty} 
+                                onChange={(e) => setSelectedQtyMap({ ...selectedQtyMap, [prod.id]: e.target.value })}
+                                className="w-12 text-[10px] p-1 border rounded font-bold text-center bg-gray-50"
+                              />
+                              <button 
+                                onClick={() => addToCart(prod, store)} 
+                                className="text-[10px] bg-red-600 text-white px-2 py-1 rounded font-bold hover:bg-red-700 shadow">
+                                + Pedir
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
@@ -632,7 +690,10 @@
                                     <div key={prod.id} className="flex gap-3 bg-white p-2 rounded border items-center">
                                       <img src={prod.image} className="w-16 h-16 object-cover rounded bg-gray-200" alt={prod.name} />
                                       <div className="flex-1">
-                                        <p className="font-bold text-sm text-gray-800">{prod.name}</p>
+                                        <div className="flex items-center gap-1.5">
+                                          <p className="font-bold text-sm text-gray-800">{prod.name}</p>
+                                          {prod.isPromo && <span className="bg-red-100 text-red-700 font-extrabold text-[9px] px-1 py-0.5 rounded">🔥 PROMO</span>}
+                                        </div>
                                         <p className="text-xs text-gray-500">{prod.description}</p>
                                         <p className="text-xs font-bold text-red-600 mt-0.5">${prod.price} <span className="text-[10px] text-gray-400">/ {prod.unit || 'Unidad'}</span></p>
                                         
@@ -844,7 +905,6 @@
                       )}
                     </div>
 
-                    {/* NUEVO: HISTORIAL DE VENTAS DEL COMERCIO PARA CONTROL DE CAJA / EMPLEADOS */}
                     <div className="border p-3 rounded bg-gray-50 space-y-2 mt-4">
                       <h3 className="font-bold text-gray-800 border-b pb-1">📜 Historial de Ventas Entregadas:</h3>
                       {orders.filter(o => o.storeId === loggedStore.id && o.status === 'entregado').length === 0 ? (
@@ -900,6 +960,20 @@
                         </select>
                       </div>
 
+                      {/* CHECKBOX PARA DESTACAR COMO PROMOCIÓN */}
+                      <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 p-2 rounded">
+                        <input 
+                          type="checkbox" 
+                          id="promoCheck" 
+                          checked={prodIsPromo} 
+                          onChange={(e) => setProdIsPromo(e.target.checked)} 
+                          className="w-4 h-4 text-red-600 rounded"
+                        />
+                        <label htmlFor="promoCheck" className="text-[11px] font-bold text-amber-900 cursor-pointer">
+                          🔥 Destacar como Oferta / Promoción Semanal o del Día
+                        </label>
+                      </div>
+
                       <input placeholder="Descripción breve (Opcional)" value={prodDesc} onChange={e=>setProdDesc(e.target.value)} className="w-full p-2 border rounded" />
                       
                       <div className="bg-white p-2 border rounded space-y-1">
@@ -919,7 +993,11 @@
                           <div className="flex items-center gap-2">
                             <img src={p.image} className="w-10 h-10 object-cover rounded bg-gray-200" />
                             <div>
-                              <p className="font-bold">{p.name} <span className="text-[10px] bg-red-100 text-red-700 px-1 py-0.5 rounded">[{p.category || 'General'}]</span></p>
+                              <p className="font-bold">
+                                {p.name} 
+                                <span className="text-[10px] bg-red-100 text-red-700 px-1 py-0.5 rounded ml-1">[{p.category || 'General'}]</span>
+                                {p.isPromo && <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-1 py-0.5 rounded ml-1">🔥 Promo</span>}
+                              </p>
                               <p className="text-gray-500">${p.price} / {p.unit || 'Unidad'}</p>
                             </div>
                           </div>
@@ -1045,7 +1123,6 @@
                       </>
                     )}
 
-                    {/* NUEVO: HISTORIAL DIARIO DE ENVIOS DEL CADETE */}
                     <div className="border p-3 rounded bg-gray-50 space-y-2 mt-4">
                       <h3 className="font-bold text-gray-800 border-b pb-1">📜 Mi Historial de Envíos Realizados:</h3>
                       {orders.filter(o => o.cadeteId === loggedCadete.id && o.status === 'entregado').length === 0 ? (
