@@ -81,6 +81,30 @@
         };
       }, []);
 
+      // VERIFICACIÓN AUTOMÁTICA DE EXPIRACIÓN DE PEDIDOS PENDIENTES (10 MINUTOS)
+      useEffect(() => {
+        const interval = setInterval(async () => {
+          const now = Date.now();
+          for (const order of orders) {
+            if (order.status === 'pendiente' && order.createdAt) {
+              const orderTime = order.createdAt.toMillis ? order.createdAt.toMillis() : order.createdAt.seconds * 1000;
+              const diffMinutes = (now - orderTime) / (1000 * 60);
+              
+              // Si pasan más de 10 minutos sin ser tomado, se cancela automáticamente
+              if (diffMinutes > 10) {
+                try {
+                  await db.collection('orders').doc(order.id).update({ status: 'cancelado_por_tiempo' });
+                } catch (err) {
+                  console.error("Error al expirar pedido automático:", err);
+                }
+              }
+            }
+          }
+        }, 30000); // Revisa cada 30 segundos
+
+        return () => clearInterval(interval);
+      }, [orders]);
+
       const [adminPass, setAdminPass] = useState('');
       const [isAdminLogged, setIsAdminLogged] = useState(false);
       
@@ -371,7 +395,6 @@
         }
       };
 
-      // RECHAZAR / LIBERAR ENVÍO (DEVUELVE LA COMISIÓN AL CADETE)
       const handleRejectOrder = async (orderId) => {
         if (!loggedCadete) return;
         if (confirm("¿Estás seguro de que deseas rechazar este envío? Volverá a estar disponible para otro cadete y se te devolverán los $" + APP_FEE + ".")) {
@@ -388,7 +411,7 @@
       };
 
       const handleSetPrepTime = async (orderId, customerPhone, customerName) => {
-        const prepMinutes = orderPrepTimes[orderId] || "30";
+        const prepMinutes = orderPrepTimes[orderId] || "15";
         try {
           await db.collection('orders').doc(orderId).update({ prepTime: prepMinutes });
           alert(`Tiempo guardado (${prepMinutes} mins). Notifica al cliente por WhatsApp si lo deseas.`);
@@ -732,10 +755,10 @@
 
                     <div className="space-y-2">
                       <h3 className="font-bold text-gray-800 border-b pb-1">Pedidos de mis Clientes:</h3>
-                      {orders.filter(o => o.storeId === loggedStore.id && o.status !== 'entregado').length === 0 ? (
+                      {orders.filter(o => o.storeId === loggedStore.id && o.status !== 'entregado' && o.status !== 'cancelado_por_tiempo').length === 0 ? (
                         <p className="text-gray-500 text-center py-2">No hay pedidos activos en este momento.</p>
                       ) : (
-                        orders.filter(o => o.storeId === loggedStore.id && o.status !== 'entregado').map(o => {
+                        orders.filter(o => o.storeId === loggedStore.id && o.status !== 'entregado' && o.status !== 'cancelado_por_tiempo').map(o => {
                           const assignedCadete = cadetes.find(c => c.id === o.cadeteId);
                           return (
                             <div key={o.id} className="border p-3 rounded bg-white shadow-sm space-y-2">
@@ -760,9 +783,11 @@
                                 <p className="font-bold text-yellow-900 text-[11px]">⏱️ Tiempo estimado de preparación:</p>
                                 <div className="flex gap-2 items-center">
                                   <select 
-                                    value={orderPrepTimes[o.id] || o.prepTime || '30'}
+                                    value={orderPrepTimes[o.id] || o.prepTime || '15'}
                                     onChange={(e) => setOrderPrepTimes({ ...orderPrepTimes, [o.id]: e.target.value })}
                                     className="p-1 border rounded bg-white text-xs font-bold">
+                                    <option value="5">5 minutos</option>
+                                    <option value="10">10 minutos</option>
                                     <option value="15">15 minutos</option>
                                     <option value="20">20 minutos</option>
                                     <option value="30">30 minutos</option>
