@@ -47,7 +47,7 @@
         banco: "Mercado Pago"
       };
 
-      const STORE_COMMISSION_PERCENT = 0.10; 
+      const STORE_COMMISSION_PERCENT = 0.05; // Actualizado al 5%
       const APP_FEE = 300; 
       const BASE_DELIVERY_FEE = 1500; 
 
@@ -1049,13 +1049,13 @@
                       <button onClick={()=>setLoggedStore(null)} className="text-red-600 font-bold underline">Salir</button>
                     </div>
 
-                    {/* VISTA DE COMISIÓN PARA EL COMERCIO (SOLO LECTURA DE DEUDA) */}
+                    {/* VISTA DE COMISIÓN PARA EL COMERCIO (AJUSTADA AL 5%) */}
                     <div className="border p-3 rounded bg-amber-50 border-amber-300 space-y-2 shadow-sm">
                       <div className="flex items-center gap-1.5 text-amber-900 font-extrabold text-sm">
-                        <span>📅</span> <span>Estado de Comisión Semanal (Domingos)</span>
+                        <span>📅</span> <span>Estado de Comisión Semanal (5%)</span>
                       </div>
                       <p className="text-amber-800 text-[11px]">
-                        Recuerda que <strong>todos los domingos</strong> debes abonar el 10% de tus ventas acumuladas al Administrador.
+                        Recuerda que <strong>todos los domingos</strong> debes abonar el <strong>5%</strong> de tus ventas acumuladas al Administrador.
                       </p>
 
                       {(() => {
@@ -1085,13 +1085,13 @@
                                 <p className="font-bold text-gray-800 text-xs">${Math.round(totalSales)}</p>
                               </div>
                               <div className="bg-white p-2 rounded border">
-                                <p className="text-gray-500">Tu Ganancia (90%):</p>
+                                <p className="text-gray-500">Tu Ganancia (95%):</p>
                                 <p className="font-bold text-green-700 text-xs">${storeNetProfit}</p>
                               </div>
                             </div>
 
                             <div className="bg-white p-2.5 rounded border space-y-1">
-                              <p className="text-xs text-amber-900 font-bold">Comisión 10% adeudada al Admin:</p>
+                              <p className="text-xs text-amber-900 font-bold">Comisión 5% adeudada al Admin:</p>
                               <p className="text-base font-extrabold text-red-600">${commissionDue}</p>
                               <p className="text-[10px] text-gray-600">Para abonar, transfiere al Alias del Admin: <span className="font-mono font-bold select-all text-gray-900">{ADMIN_PAYMENT_INFO.alias}</span> ({ADMIN_PAYMENT_INFO.banco})</p>
                               <p className="text-[10px] text-gray-400 italic">Una vez que el Administrador confirme tu pago, tu deuda se pondrá en $0 automáticamente.</p>
@@ -1363,7 +1363,7 @@
                     </div>
 
                     <div className="border p-3 rounded bg-orange-50 border-orange-200 space-y-2">
-                      <h3 className="font-bold text-orange-900 text-sm">📊 Rendición de Comisiones (Cierre Semanal)</h3>
+                      <h3 className="font-bold text-orange-900 text-sm">📊 Rendición de Comisiones (5% Semanal)</h3>
                       <p className="text-[11px] text-orange-800">Cuando el comercio te transfiera, haz clic en <strong>"Marcar como Cobrado"</strong> para saldar su deuda a $0.</p>
                       
                       {stores.map(store => {
@@ -1387,7 +1387,7 @@
                             <div>
                               <p className="font-bold text-gray-800">{store.name}</p>
                               <p className="text-gray-600">Ventas: <strong>${Math.round(totalSales)}</strong></p>
-                              <p className="text-orange-700 font-bold">Comisión 10%: ${commissionDue}</p>
+                              <p className="text-orange-700 font-bold">Comisión 5%: ${commissionDue}</p>
                             </div>
                             <button 
                               onClick={()=>handleResetStoreCommission(store.id, store.name)}
