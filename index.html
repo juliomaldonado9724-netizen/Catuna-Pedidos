@@ -844,6 +844,29 @@
                       )}
                     </div>
 
+                    {/* NUEVO: HISTORIAL DE VENTAS DEL COMERCIO PARA CONTROL DE CAJA / EMPLEADOS */}
+                    <div className="border p-3 rounded bg-gray-50 space-y-2 mt-4">
+                      <h3 className="font-bold text-gray-800 border-b pb-1">📜 Historial de Ventas Entregadas:</h3>
+                      {orders.filter(o => o.storeId === loggedStore.id && o.status === 'entregado').length === 0 ? (
+                        <p className="text-gray-400 text-center italic py-2">No hay ventas registradas en el historial todavía.</p>
+                      ) : (
+                        orders.filter(o => o.storeId === loggedStore.id && o.status === 'entregado').map(o => (
+                          <div key={o.id} className="bg-white p-2.5 rounded border space-y-1">
+                            <div className="flex justify-between font-bold text-xs text-gray-800">
+                              <span>Cliente: {o.customerName}</span>
+                              <span className="text-green-700">${Math.round(o.total)}</span>
+                            </div>
+                            <p className="text-[10px] text-gray-500">Dirección: {o.address}</p>
+                            <div className="text-[10px] bg-gray-50 p-1.5 rounded border space-y-0.5">
+                              {o.items && o.items.map((i, idx) => (
+                                <p key={idx} className="text-gray-600">▪️ {i.quantity} {i.unit || 'Unid.'} x {i.name} (${Math.round(i.price * i.quantity)})</p>
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
                     <form onSubmit={handleAddProduct} className="border p-3 rounded bg-gray-50 space-y-3">
                       <h3 className="font-bold text-gray-800">Cargar Producto al Catálogo (con foto y categoría)</h3>
                       <input required placeholder="Nombre del producto (Ej: Bife de chorizo, Coca 2L)" value={prodName} onChange={e=>setProdName(e.target.value)} className="w-full p-2 border rounded" />
@@ -1021,6 +1044,30 @@
                         ))}
                       </>
                     )}
+
+                    {/* NUEVO: HISTORIAL DIARIO DE ENVIOS DEL CADETE */}
+                    <div className="border p-3 rounded bg-gray-50 space-y-2 mt-4">
+                      <h3 className="font-bold text-gray-800 border-b pb-1">📜 Mi Historial de Envíos Realizados:</h3>
+                      {orders.filter(o => o.cadeteId === loggedCadete.id && o.status === 'entregado').length === 0 ? (
+                        <p className="text-gray-400 text-center italic py-2">No has completado entregas todavía.</p>
+                      ) : (
+                        orders.filter(o => o.cadeteId === loggedCadete.id && o.status === 'entregado').map(o => (
+                          <div key={o.id} className="bg-white p-2.5 rounded border space-y-1">
+                            <div className="flex justify-between font-bold text-xs text-gray-800">
+                              <span>Local: {o.storeName}</span>
+                              <span className="text-blue-700">Cobrado: ${Math.round(o.total)}</span>
+                            </div>
+                            <p className="text-[10px] text-gray-600">Cliente: {o.customerName} ({o.address})</p>
+                            <div className="text-[10px] bg-gray-50 p-1.5 rounded border space-y-0.5">
+                              {o.items && o.items.map((i, idx) => (
+                                <p key={idx} className="text-gray-600">▪️ {i.quantity} {i.unit || 'Unid.'} x {i.name}</p>
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
                   </div>
                 )}
               </div>
