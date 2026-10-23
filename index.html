@@ -55,12 +55,12 @@
       const [products, setProducts] = useState([]);
       const [cadetes, setCadetes] = useState([]);
       const [orders, setOrders] = useState([]);
+      const [globalAnnouncement, setGlobalAnnouncement] = useState('');
 
       const [searchTerm, setSearchTerm] = useState('');
       const [orderPrepTimes, setOrderPrepTimes] = useState({});
       const [currentTime, setCurrentTime] = useState(Date.now());
 
-      // RELOJ EN VIVO PARA ACTUALIZAR LOS CONTADORES DE LAS PROMOS CADA SEGUNDO
       useEffect(() => {
         const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
         return () => clearInterval(timer);
@@ -79,12 +79,19 @@
         const unsubOrders = db.collection('orders').onSnapshot(snapshot => {
           setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
+        // ESCUCHAR ANUNCIO GLOBAL DEL ADMIN
+        const unsubConfig = db.collection('config').doc('announcement').onSnapshot(doc => {
+          if (doc.exists) {
+            setGlobalAnnouncement(doc.data().text || '');
+          }
+        });
 
         return () => {
           unsubStores();
           unsubProducts();
           unsubCadetes();
           unsubOrders();
+          unsubConfig();
         };
       }, []);
 
@@ -130,6 +137,7 @@
 
       const [selectedCadeteId, setSelectedCadeteId] = useState('');
       const [rechargeAmount, setRechargeAmount] = useState('');
+      const [announcementInput, setAnnouncementInput] = useState('');
 
       const [loginUser, setLoginUser] = useState('');
       const [loginPass, setLoginPass] = useState('');
@@ -141,7 +149,7 @@
       const [prodUnit, setProdUnit] = useState('Unidad');
       const [prodCategory, setProdCategory] = useState('General');
       const [prodIsPromo, setProdIsPromo] = useState(false);
-      const [prodPromoHours, setProdPromoHours] = useState('24'); // DURACIÓN EN HORAS DE LA PROMO
+      const [prodPromoHours, setProdPromoHours] = useState('24');
       const [prodDesc, setProdDesc] = useState('');
       const [prodImg, setProdImg] = useState('');
       const [isCompressing, setIsCompressing] = useState(false);
@@ -213,6 +221,7 @@
             titular: newStoreTitular,
             hours: newStoreHours || '08:00 a 23:00 hs',
             isOpen: true,
+            isSuspended: false, // NUEVO: ESTADO DE SUSPENSIÓN
             user: newStoreUser, 
             pass: newStorePass,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -221,6 +230,15 @@
           alert("Comercio registrado con éxito en la nube.");
         } catch (err) {
           alert("Error al registrar comercio: " + err.message);
+        }
+      };
+
+      const handleToggleStoreSuspension = async (storeId, currentStatus) => {
+        try {
+          await db.collection('stores').doc(storeId).update({ isSuspended: !currentStatus });
+          alert("Estado de suspensión actualizado.");
+        } catch (err) {
+          alert("Error: " + err.message);
         }
       };
 
@@ -246,12 +264,22 @@
             pass: newCadetePass, 
             balance: 0, 
             isOnline: true,
+            isSuspended: false, // NUEVO: ESTADO DE SUSPENSIÓN
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
           setNewCadeteName(''); setNewCadetePhone(''); setNewCadeteUser(''); setNewCadetePass(''); setNewCadeteVehicle('Moto');
           alert("Cadete creado exitosamente en la nube.");
         } catch (err) {
           alert("Error al crear cadete: " + err.message);
+        }
+      };
+
+      const handleToggleCadeteSuspension = async (cadeteId, currentStatus) => {
+        try {
+          await db.collection('cadetes').doc(cadeteId).update({ isSuspended: !currentStatus });
+          alert("Estado de suspensión actualizado.");
+        } catch (err) {
+          alert("Error: " + err.message);
         }
       };
 
@@ -263,6 +291,26 @@
           } catch (err) {
             alert("Error al eliminar cadete: " + err.message);
           }
+        }
+      };
+
+      const handlePublishAnnouncement = async (e) => {
+        e.preventDefault();
+        try {
+          await db.collection('config').doc('announcement').set({ text: announcementInput });
+          setAnnouncementInput('');
+          alert("¡Anuncio global actualizado con éxito!");
+        } catch (err) {
+          alert("Error al publicar anuncio: " + err.message);
+        }
+      };
+
+      const handleClearAnnouncement = async () => {
+        try {
+          await db.collection('config').doc('announcement').set({ text: '' });
+          alert("Anuncio global eliminado.");
+        } catch (err) {
+          alert("Error: " + err.message);
         }
       };
 
@@ -305,8 +353,15 @@
       const handleStoreLogin = (e) => {
         e.preventDefault();
         const found = stores.find(s => s.user === loginUser && s.pass === loginPass);
-        if (found) setLoggedStore(found);
-        else alert("Usuario o clave incorrectos");
+        if (found) {
+          if (found.isSuspended) {
+            alert("⚠️ Tu comercio se encuentra suspendido temporalmente por el Administrador.");
+            return;
+          }
+          setLoggedStore(found);
+        } else {
+          alert("Usuario o clave incorrectos");
+        }
       };
 
       const toggleStoreOpenStatus = async () => {
@@ -328,7 +383,6 @@
           return;
         }
 
-        // Calcular fecha exacta de expiración si es promoción
         let promoExpiresAt = null;
         if (prodIsPromo) {
           const hours = Number(prodPromoHours) || 24;
@@ -343,7 +397,7 @@
             unit: prodUnit || 'Unidad',
             category: prodCategory || 'General',
             isPromo: prodIsPromo,
-            promoExpiresAt: promoExpiresAt, // TIEMPO DE EXPIRACIÓN EN MILISEGUNDOS
+            promoExpiresAt: promoExpiresAt,
             description: prodDesc, 
             image: prodImg || 'https://via.placeholder.com/150',
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -368,8 +422,15 @@
       const handleCadeteLogin = (e) => {
         e.preventDefault();
         const found = cadetes.find(c => c.user === loginUser && c.pass === loginPass);
-        if (found) setLoggedCadete(found);
-        else alert("Usuario o clave incorrectos");
+        if (found) {
+          if (found.isSuspended) {
+            alert("⚠️ Tu cuenta de cadete se encuentra suspendida temporalmente por el Administrador.");
+            return;
+          }
+          setLoggedCadete(found);
+        } else {
+          alert("Usuario o clave incorrectos");
+        }
       };
 
       const toggleCadeteOnlineStatus = async () => {
@@ -443,14 +504,14 @@
       };
 
       const addToCart = (product, store) => {
-        const onlineCadetesCount = cadetes.filter(c => c.isOnline).length;
+        const onlineCadetesCount = cadetes.filter(c => c.isOnline && !c.isSuspended).length;
         if (onlineCadetesCount === 0) {
           alert("⚠️ En este momento no hay cadetes en línea disponibles. Intenta más tarde.");
           return;
         }
 
-        if (!store.isOpen) {
-          alert("Este negocio está cerrado actualmente.");
+        if (!store.isOpen || store.isSuspended) {
+          alert("Este negocio no está disponible actualmente.");
           return;
         }
         if (selectedStore && selectedStore.id !== store.id) {
@@ -514,7 +575,9 @@
         }
       };
 
+      // SOLO MOSTRAR COMERCIOS NO SUSPENDIDOS AL CLIENTE
       const filteredStores = stores.filter(store => {
+        if (store.isSuspended) return false;
         const query = searchTerm.toLowerCase().trim();
         if (!query) return true;
 
@@ -525,17 +588,15 @@
         return matchesStore || matchesProduct;
       });
 
-      const onlineCadetesCount = cadetes.filter(c => c.isOnline).length;
+      const onlineCadetesCount = cadetes.filter(c => c.isOnline && !c.isSuspended).length;
 
-      // FILTRAR PROMOS ACTIVAS Y NO EXPIRADAS
       const promoProducts = products.filter(p => {
         if (!p.isPromo) return false;
-        if (p.promoExpiresAt && currentTime > p.promoExpiresAt) return false; // Ya expiró
+        if (p.promoExpiresAt && currentTime > p.promoExpiresAt) return false;
         const store = stores.find(s => s.id === p.storeId);
-        return store && store.isOpen;
+        return store && store.isOpen && !store.isSuspended;
       });
 
-      // FUNCIÓN PARA FORMATEAR EL TIEMPO RESTANTE
       const getTimeLeftString = (expiresAt) => {
         if (!expiresAt) return "Por tiempo limitado";
         const diff = expiresAt - currentTime;
@@ -561,6 +622,13 @@
             </div>
             <span className="text-xs bg-red-700 px-2 py-1 rounded font-bold uppercase">{currentTab}</span>
           </header>
+
+          {/* ANUNCIO GLOBAL EN VIVO PARA CLIENTES */}
+          {globalAnnouncement && currentTab === 'cliente' && (
+            <div className="bg-amber-500 text-amber-950 font-bold px-4 py-2 text-xs text-center border-b border-amber-600 shadow-inner flex items-center justify-center gap-2">
+              <span>📢</span> <span>{globalAnnouncement}</span>
+            </div>
+          )}
 
           <nav className="bg-gray-800 text-white text-xs flex justify-around p-2">
             <button onClick={() => setCurrentTab('cliente')} className={`py-1 px-3 rounded ${currentTab==='cliente'?'bg-red-600 font-bold':''}`}>Cliente</button>
@@ -596,7 +664,6 @@
                   </div>
                 )}
 
-                {/* SECCIÓN EXCLUSIVA DE PROMOCIONES CON CONTADOR EN VIVO */}
                 {promoProducts.length > 0 && (
                   <div className="bg-gradient-to-r from-red-50 to-amber-50 border-2 border-red-400 p-3 rounded-xl shadow-sm space-y-2">
                     <h2 className="font-extrabold text-red-700 text-sm flex items-center gap-1.5">
@@ -997,7 +1064,6 @@
                         </select>
                       </div>
 
-                      {/* CONFIGURACIÓN DE PROMOCIÓN Y TIEMPO */}
                       <div className="bg-amber-50 border border-amber-200 p-2.5 rounded space-y-2">
                         <div className="flex items-center gap-2">
                           <input 
@@ -1219,6 +1285,56 @@
                       <button onClick={()=>setIsAdminLogged(false)} className="text-red-300 font-bold underline">Salir</button>
                     </div>
 
+                    {/* NUEVO: RESUMEN DE GANANCIAS TOTALES DE LA APP */}
+                    {(() => {
+                      const deliveredOrders = orders.filter(o => o.status === 'entregado');
+                      const totalAppCommissions = deliveredOrders.reduce((sum, o) => sum + (o.subtotal * STORE_COMMISSION_PERCENT), 0);
+                      const totalDeliveryFeesGenerated = deliveredOrders.length * APP_FEE;
+                      const grandTotalRevenue = totalAppCommissions + totalDeliveryFeesGenerated;
+
+                      return (
+                        <div className="border p-3 rounded bg-emerald-50 border-emerald-300 space-y-2">
+                          <h3 className="font-bold text-emerald-900 text-sm">💰 Balance Total Generado por la App</h3>
+                          <div className="grid grid-cols-2 gap-2 text-[11px]">
+                            <div className="bg-white p-2 rounded border">
+                              <p className="text-gray-500">Comisiones (10%):</p>
+                              <p className="font-bold text-emerald-700 text-xs">${Math.round(totalAppCommissions)}</p>
+                            </div>
+                            <div className="bg-white p-2 rounded border">
+                              <p className="text-gray-500">Tarifa Cadetes ($300/envío):</p>
+                              <p className="font-bold text-blue-700 text-xs">${Math.round(totalDeliveryFeesGenerated)}</p>
+                            </div>
+                          </div>
+                          <div className="bg-white p-2 rounded border flex justify-between items-center">
+                            <span className="font-bold text-gray-800">Recaudación Total App:</span>
+                            <span className="font-extrabold text-red-600 text-sm">${Math.round(grandTotalRevenue)}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* NUEVO: PANEL DE ANUNCIO GLOBAL */}
+                    <form onSubmit={handlePublishAnnouncement} className="border p-3 rounded bg-amber-50 border-amber-300 space-y-2">
+                      <h3 className="font-bold text-amber-900 text-sm">📢 Anuncio Global para Clientes</h3>
+                      <input 
+                        placeholder="Ej: ¡Hoy horario especial por feriado! / 10% off en todos los kioscos" 
+                        value={announcementInput} 
+                        onChange={e=>setAnnouncementInput(e.target.value)} 
+                        className="w-full p-2 border rounded bg-white" 
+                      />
+                      <div className="flex gap-2">
+                        <button type="submit" className="flex-1 bg-amber-600 text-white py-1.5 rounded font-bold hover:bg-amber-700 shadow">
+                          Publicar Anuncio
+                        </button>
+                        {globalAnnouncement && (
+                          <button type="button" onClick={handleClearAnnouncement} className="bg-red-600 text-white px-3 py-1.5 rounded font-bold shadow">
+                            Borrar
+                          </button>
+                        )}
+                      </div>
+                      {globalAnnouncement && <p className="text-[10px] text-gray-600">Activo actualmente: "{globalAnnouncement}"</p>}
+                    </form>
+
                     <div className="border p-3 rounded bg-orange-50 border-orange-200 space-y-2">
                       <h3 className="font-bold text-orange-900 text-sm">📊 Rendición de Comisiones (10%)</h3>
                       {stores.length === 0 ? <p className="text-gray-500">No hay comercios cargados.</p> : null}
@@ -1246,44 +1362,62 @@
                     </div>
 
                     <div className="border p-3 rounded bg-gray-50 space-y-2">
-                      <h3 className="font-bold text-gray-800 text-sm">🏪 Comercios Registrados</h3>
+                      <h3 className="font-bold text-gray-800 text-sm">🏪 Comercios Registrados (Control y Suspensión)</h3>
                       {stores.length === 0 ? (
                         <p className="text-gray-500">No hay comercios registrados actualmente.</p>
                       ) : (
                         stores.map(store => (
                           <div key={store.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
                             <div>
-                              <p className="font-bold text-gray-800">{store.name}</p>
+                              <p className="font-bold text-gray-800">
+                                {store.name} 
+                                {store.isSuspended && <span className="text-red-600 ml-1 text-[10px] bg-red-100 px-1 rounded font-bold">⚠️ SUSPENDIDO</span>}
+                              </p>
                               <p className="text-gray-500 text-[11px]">{store.address} - Tel: {store.phone}</p>
-                              <p className="text-gray-400 text-[10px]">Usuario: {store.user}</p>
                             </div>
-                            <button 
-                              onClick={() => handleDeleteStore(store.id, store.name)}
-                              className="bg-red-600 text-white font-bold px-2 py-1.5 rounded text-[11px] shadow hover:bg-red-700">
-                              🗑️ Eliminar
-                            </button>
+                            <div className="flex gap-1">
+                              <button 
+                                onClick={() => handleToggleStoreSuspension(store.id, store.isSuspended)}
+                                className={`font-bold px-2 py-1.5 rounded text-[10px] shadow text-white ${store.isSuspended ? 'bg-green-600 hover:bg-green-700' : 'bg-yellow-600 hover:bg-yellow-700'}`}>
+                                {store.isSuspended ? 'Habilitar' : 'Suspender'}
+                              </button>
+                              <button 
+                                onClick={() => handleDeleteStore(store.id, store.name)}
+                                className="bg-red-600 text-white font-bold px-2 py-1.5 rounded text-[10px] shadow hover:bg-red-700">
+                                🗑️
+                              </button>
+                            </div>
                           </div>
                         ))
                       )}
                     </div>
 
                     <div className="border p-3 rounded bg-blue-50 border-blue-200 space-y-2">
-                      <h3 className="font-bold text-blue-900 text-sm">🛵 Cadetes / Repartidores Registrados</h3>
+                      <h3 className="font-bold text-blue-900 text-sm">🛵 Cadetes / Repartidores Registrados (Control y Suspensión)</h3>
                       {cadetes.length === 0 ? (
                         <p className="text-gray-500">No hay cadetes registrados actualmente.</p>
                       ) : (
                         cadetes.map(cadete => (
                           <div key={cadete.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
                             <div>
-                              <p className="font-bold text-gray-800">{cadete.name} ({cadete.vehicle})</p>
-                              <p className="text-gray-500 text-[11px]">Tel: {cadete.phone} | Usuario: {cadete.user}</p>
-                              <p className="text-green-700 font-bold text-[11px]">Saldo actual: ${cadete.balance || 0}</p>
+                              <p className="font-bold text-gray-800">
+                                {cadete.name} ({cadete.vehicle})
+                                {cadete.isSuspended && <span className="text-red-600 ml-1 text-[10px] bg-red-100 px-1 rounded font-bold">⚠️ SUSPENDIDO</span>}
+                              </p>
+                              <p className="text-gray-500 text-[11px]">Tel: {cadete.phone} | Saldo: ${cadete.balance || 0}</p>
                             </div>
-                            <button 
-                              onClick={() => handleDeleteCadete(cadete.id, cadete.name)}
-                              className="bg-red-600 text-white font-bold px-2 py-1.5 rounded text-[11px] shadow hover:bg-red-700">
-                              🗑️ Eliminar
-                            </button>
+                            <div className="flex gap-1">
+                              <button 
+                                onClick={() => handleToggleCadeteSuspension(cadete.id, cadete.isSuspended)}
+                                className={`font-bold px-2 py-1.5 rounded text-[10px] shadow text-white ${cadete.isSuspended ? 'bg-green-600 hover:bg-green-700' : 'bg-yellow-600 hover:bg-yellow-700'}`}>
+                                {cadete.isSuspended ? 'Habilitar' : 'Suspender'}
+                              </button>
+                              <button 
+                                onClick={() => handleDeleteCadete(cadete.id, cadete.name)}
+                                className="bg-red-600 text-white font-bold px-2 py-1.5 rounded text-[10px] shadow hover:bg-red-700">
+                                🗑️
+                              </button>
+                            </div>
                           </div>
                         ))
                       )}
