@@ -49,7 +49,7 @@
 
       const STORE_COMMISSION_PERCENT = 0.10; 
       const APP_FEE = 300; 
-      const BASE_DELIVERY_FEE = 1500; // Tarifa base de envío
+      const BASE_DELIVERY_FEE = 1500; 
 
       const [stores, setStores] = useState([]);
       const [products, setProducts] = useState([]);
@@ -201,7 +201,34 @@
       const [custName, setCustName] = useState('');
       const [custPhone, setCustPhone] = useState('');
       const [custAddress, setCustAddress] = useState('');
+      const [custCoords, setCustCoords] = useState(null); // NUEVO: COORDENADAS GPS
+      const [isGettingLocation, setIsGettingLocation] = useState(false); // NUEVO: ESTADO DE CARGA GPS
       const [lastOrderSent, setLastOrderSent] = useState(null);
+
+      // FUNCIÓN PARA OBTENER UBICACIÓN GPS DEL NAVEGADOR
+      const handleGetLocationGPS = () => {
+        if (!navigator.geolocation) {
+          alert("Tu navegador no soporta geolocalización.");
+          return;
+        }
+
+        setIsGettingLocation(true);
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            setCustCoords({ lat, lng });
+            setCustAddress(`📍 Ubicación GPS exacta (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+            setIsGettingLocation(false);
+            alert("¡Ubicación GPS obtenida con éxito!");
+          },
+          (error) => {
+            setIsGettingLocation(false);
+            alert("No se pudo obtener la ubicación. Asegúrate de dar permisos de GPS a tu navegador.");
+          },
+          { enableHighAccuracy: true }
+        );
+      };
 
       const handleAdminLogin = (e) => {
         e.preventDefault();
@@ -505,7 +532,6 @@
         }
       };
 
-      // PERMITIR AGREGAR PRODUCTOS DE CUALQUIER LOCAL AL CARRITO MULTI-LOCAL
       const addToCart = (product, store) => {
         const onlineCadetesCount = cadetes.filter(c => c.isOnline && !c.isSuspended).length;
         if (onlineCadetesCount === 0) {
@@ -546,7 +572,6 @@
         e.preventDefault();
         if (cart.length === 0) return;
         
-        // Agrupar comercios involucrados y calcular costos
         const uniqueStoresMap = {};
         cart.forEach(item => {
           if (!uniqueStoresMap[item.storeId]) {
@@ -564,19 +589,18 @@
         const storesList = Object.values(uniqueStoresMap);
         const storesInvolvedIds = storesList.map(s => s.storeId);
         
-        // Si hay más de 1 local, sumamos un plus de $500 por cada parada extra al envío
         const extraStopsCount = Math.max(0, storesList.length - 1);
         const totalDeliveryFee = BASE_DELIVERY_FEE + (extraStopsCount * 500);
         const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
         
         try {
-          // Registrar el pedido global en la base de datos
           await db.collection('orders').add({
             storesInvolved: storesInvolvedIds,
             storesList: storesList,
             customerName: custName,
             customerPhone: custPhone,
             address: custAddress,
+            coords: custCoords || null, // GUARDAR COORDENADAS GPS SI EXISTEN
             items: cart,
             deliveryFee: totalDeliveryFee,
             subtotal,
@@ -588,7 +612,6 @@
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
 
-          // Notificar por WhatsApp a cada local involucrado con su parte del pedido
           storesList.forEach(store => {
             const storeItemsList = store.items.map(i => `• ${i.quantity} ${i.unit || 'Unid.'} x ${i.name} ($${Math.round(i.price * i.quantity)})`).join('%0A');
             const storeSubtotal = store.items.reduce((s, i) => s + (i.price * i.quantity), 0);
@@ -602,7 +625,7 @@
           setLastOrderSent({ storeName: storesList.map(s => s.name).join(', '), total: Math.round(subtotal + totalDeliveryFee) });
           setCart([]);
           setIsCartOpen(false);
-          setCustName(''); setCustPhone(''); setCustAddress('');
+          setCustName(''); setCustPhone(''); setCustAddress(''); setCustCoords(null);
           alert("¡Pedido multi-local enviado con éxito! Se notificó a los comercios por WhatsApp.");
         } catch (err) {
           alert("Error al enviar pedido: " + err.message);
@@ -648,8 +671,6 @@
 
       const totalCartItemsCount = cart.reduce((sum, item) => sum + Number(item.quantity), 0);
       const cartSubtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-      
-      // Calcular cantidad de locales únicos en el carrito actual
       const uniqueStoresInCart = [...new Set(cart.map(i => i.storeId))].length;
       const calculatedDeliveryFee = BASE_DELIVERY_FEE + (Math.max(0, uniqueStoresInCart - 1) * 500);
 
@@ -867,7 +888,7 @@
                   })
                 )}
 
-                {/* BOTÓN FLOTANTE INFERIOR DEL CARRITO MULTI-LOCAL */}
+                {/* BOTÓN FLOTANTE INFERIOR DEL CARRITO */}
                 {cart.length > 0 && (
                   <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-gray-900 text-white p-3 shadow-2xl z-50 flex justify-between items-center border-t-2 border-red-500">
                     <div>
@@ -882,7 +903,7 @@
                   </div>
                 )}
 
-                {/* MODAL / PANTALLA DETALLADA DEL CARRITO MULTI-LOCAL */}
+                {/* MODAL DEL CARRITO CON BOTÓN GPS */}
                 {isCartOpen && (
                   <div className="fixed inset-0 bg-black/60 z-50 flex flex-col justify-end max-w-md mx-auto">
                     <div className="bg-white rounded-t-2xl p-4 space-y-3 max-h-[85vh] overflow-y-auto shadow-2xl">
@@ -932,11 +953,33 @@
                         </div>
                       </div>
 
-                      <form onSubmit={handleCreateOrder} className="space-y-2 pt-1">
+                      <form onSubmit={handleCreateOrder} className="space-y-2.5 pt-1">
                         <p className="text-xs font-bold text-gray-800">Datos para la entrega:</p>
                         <input required placeholder="Tu Nombre Completo" value={custName} onChange={e=>setCustName(e.target.value)} className="w-full text-xs p-2 border rounded" />
                         <input required placeholder="Teléfono WhatsApp (Ej: 3826123456)" value={custPhone} onChange={e=>setCustPhone(e.target.value)} className="w-full text-xs p-2 border rounded" />
-                        <input required placeholder="Dirección exacta / Referencias" value={custAddress} onChange={e=>setCustAddress(e.target.value)} className="w-full text-xs p-2 border rounded" />
+                        
+                        {/* SECCIÓN DE DIRECCIÓN Y BOTÓN GPS */}
+                        <div className="space-y-1">
+                          <div className="flex gap-2">
+                            <input 
+                              required 
+                              placeholder="Dirección exacta o referencias" 
+                              value={custAddress} 
+                              onChange={e=>setCustAddress(e.target.value)} 
+                              className="flex-1 text-xs p-2 border rounded" 
+                            />
+                            <button 
+                              type="button" 
+                              onClick={handleGetLocationGPS}
+                              disabled={isGettingLocation}
+                              className="bg-blue-600 text-white font-bold px-3 py-1.5 rounded text-[11px] shadow hover:bg-blue-700 flex items-center gap-1 flex-shrink-0">
+                              {isGettingLocation ? '⏳ Buscando...' : '📍 Usar GPS'}
+                            </button>
+                          </div>
+                          {custCoords && (
+                            <p className="text-[10px] text-green-600 font-bold">✅ Ubicación GPS guardada correctamente.</p>
+                          )}
+                        </div>
                         
                         <div className="flex gap-2 pt-2">
                           <button type="button" onClick={() => setIsCartOpen(false)} className="flex-1 bg-gray-300 text-gray-700 py-2 rounded font-bold text-xs">
@@ -1049,9 +1092,7 @@
                           return hasStore && o.status !== 'entregado' && o.status !== 'cancelado_por_tiempo';
                         }).map(o => {
                           const assignedCadete = cadetes.find(c => c.id === o.cadeteId);
-                          // Filtrar ítems que corresponden a este local específico
                           const myItems = o.storesList ? (o.storesList.find(s => s.storeId === loggedStore.id)?.items || []) : (o.items || []);
-                          const mySubtotal = myItems.reduce((s, i) => s + (i.price * i.quantity), 0);
 
                           return (
                             <div key={o.id} className="border p-3 rounded bg-white shadow-sm space-y-2">
@@ -1071,8 +1112,6 @@
                                   </div>
                                 ))}
                               </div>
-
-                              <p className="text-gray-800 font-bold">Subtotal a cobrar al cliente/cadete: ${Math.round(mySubtotal)}</p>
 
                               <div className="bg-yellow-50 border border-yellow-200 p-2 rounded space-y-1.5">
                                 <p className="font-bold text-yellow-900 text-[11px]">⏱️ Tiempo estimado de preparación:</p>
@@ -1101,7 +1140,7 @@
                                 <div className="bg-blue-50 border border-blue-200 p-2 rounded space-y-2 mt-2">
                                   <p className="text-blue-900 font-bold">Cadete asignado: {assignedCadete.name} ({assignedCadete.vehicle})</p>
                                   <a 
-                                    href={`https://wa.me/549${assignedCadete.phone}?text=Hola%20${encodeURIComponent(assignedCadete.name)},%20el%20pedido%20de%20${encodeURIComponent(o.customerName)}%20ya%20está%20listo%20en%20el%20local%20para%20que%20lo%20pases%20a%20retirar.`}
+                                    href={`https://wa.me/549${assignedCadete.phone}?text=Hola%20${encodeURIComponent(assignedCadete.name)},%20el%20pedido%20de%20${encodeURIComponent(o.customerName)}%20ya%20está%20listo%20en%20el%20local.`}
                                     target="_blank"
                                     className="block w-full bg-green-600 text-white text-center font-bold py-1.5 rounded shadow hover:bg-green-700">
                                     💬 Avisar al Cadete que está listo
@@ -1116,42 +1155,9 @@
                       )}
                     </div>
 
-                    <div className="border p-3 rounded bg-gray-50 space-y-2 mt-4">
-                      <h3 className="font-bold text-gray-800 border-b pb-1">📜 Historial de Ventas Entregadas:</h3>
-                      {orders.filter(o => {
-                        const hasStore = o.storeId === loggedStore.id || (o.storesInvolved && o.storesInvolved.includes(loggedStore.id));
-                        return hasStore && o.status === 'entregado';
-                      }).length === 0 ? (
-                        <p className="text-gray-400 text-center italic py-2">No hay ventas registradas en el historial todavía.</p>
-                      ) : (
-                        orders.filter(o => {
-                          const hasStore = o.storeId === loggedStore.id || (o.storesInvolved && o.storesInvolved.includes(loggedStore.id));
-                          return hasStore && o.status === 'entregado';
-                        }).map(o => {
-                          const myItems = o.storesList ? (o.storesList.find(s => s.storeId === loggedStore.id)?.items || []) : (o.items || []);
-                          const mySubtotal = myItems.reduce((s, i) => s + (i.price * i.quantity), 0);
-
-                          return (
-                            <div key={o.id} className="bg-white p-2.5 rounded border space-y-1">
-                              <div className="flex justify-between font-bold text-xs text-gray-800">
-                                <span>Cliente: {o.customerName}</span>
-                                <span className="text-green-700">${Math.round(mySubtotal)}</span>
-                              </div>
-                              <p className="text-[10px] text-gray-500">Dirección: {o.address}</p>
-                              <div className="text-[10px] bg-gray-50 p-1.5 rounded border space-y-0.5">
-                                {myItems.map((i, idx) => (
-                                  <p key={idx} className="text-gray-600">▪️ {i.quantity} {i.unit || 'Unid.'} x {i.name} (${Math.round(i.price * i.quantity)})</p>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-
-                    <form onSubmit={handleAddProduct} className="border p-3 rounded bg-gray-50 space-y-3">
-                      <h3 className="font-bold text-gray-800">Cargar Producto al Catálogo (con foto y categoría)</h3>
-                      <input required placeholder="Nombre del producto (Ej: Bife de chorizo, Coca 2L)" value={prodName} onChange={e=>setProdName(e.target.value)} className="w-full p-2 border rounded" />
+                    <form onSubmit={handleAddProduct} className="border p-3 rounded bg-gray-50 space-y-3 mt-4">
+                      <h3 className="font-bold text-gray-800">Cargar Producto al Catálogo</h3>
+                      <input required placeholder="Nombre del producto" value={prodName} onChange={e=>setProdName(e.target.value)} className="w-full p-2 border rounded" />
                       
                       <div className="grid grid-cols-2 gap-2">
                         <div>
@@ -1169,7 +1175,7 @@
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-bold text-gray-700">Categoría del producto:</label>
+                        <label className="block text-[11px] font-bold text-gray-700">Categoría:</label>
                         <select value={prodCategory} onChange={e=>setProdCategory(e.target.value)} className="w-full p-2 border rounded bg-white font-bold text-red-600">
                           <option value="Bebidas">🥤 Bebidas</option>
                           <option value="Comidas / Minutas">🍔 Comidas / Minutas</option>
@@ -1184,28 +1190,17 @@
 
                       <div className="bg-amber-50 border border-amber-200 p-2.5 rounded space-y-2">
                         <div className="flex items-center gap-2">
-                          <input 
-                            type="checkbox" 
-                            id="promoCheck" 
-                            checked={prodIsPromo} 
-                            onChange={(e) => setProdIsPromo(e.target.checked)} 
-                            className="w-4 h-4 text-red-600 rounded"
-                          />
-                          <label htmlFor="promoCheck" className="text-[11px] font-bold text-amber-900 cursor-pointer">
-                            🔥 Marcar como Oferta / Promoción Destacada
-                          </label>
+                          <input type="checkbox" id="promoCheck" checked={prodIsPromo} onChange={(e) => setProdIsPromo(e.target.checked)} className="w-4 h-4 text-red-600 rounded" />
+                          <label htmlFor="promoCheck" className="text-[11px] font-bold text-amber-900 cursor-pointer">🔥 Marcar como Oferta / Promoción Destacada</label>
                         </div>
-
                         {prodIsPromo && (
                           <div>
-                            <label className="block text-[10px] font-bold text-gray-700 mb-1">Duración de la promoción:</label>
+                            <label className="block text-[10px] font-bold text-gray-700 mb-1">Duración:</label>
                             <select value={prodPromoHours} onChange={e=>setProdPromoHours(e.target.value)} className="w-full p-1.5 border rounded bg-white text-xs font-bold text-red-600">
                               <option value="6">6 horas</option>
                               <option value="12">12 horas</option>
-                              <option value="24">24 horas (1 día)</option>
-                              <option value="48">48 horas (2 días)</option>
-                              <option value="72">72 horas (3 días)</option>
-                              <option value="168">1 semana</option>
+                              <option value="24">24 horas</option>
+                              <option value="48">48 horas</option>
                             </select>
                           </div>
                         )}
@@ -1214,34 +1209,13 @@
                       <input placeholder="Descripción breve (Opcional)" value={prodDesc} onChange={e=>setProdDesc(e.target.value)} className="w-full p-2 border rounded" />
                       
                       <div className="bg-white p-2 border rounded space-y-1">
-                        <label className="block text-[11px] font-bold text-gray-700">📷 Saca o selecciona la foto del producto:</label>
-                        <input required type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs file:mr-4 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-red-50 file:text-red-700 hover:file:bg-red-100" />
-                        {isCompressing && <p className="text-[10px] text-orange-600 font-bold">⏳ Procesando y optimizando imagen...</p>}
-                        {prodImg && !isCompressing && <p className="text-[10px] text-green-600 font-bold">✅ Foto lista y optimizada</p>}
+                        <label className="block text-[11px] font-bold text-gray-700">📷 Foto del producto:</label>
+                        <input required type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs" />
+                        {isCompressing && <p className="text-[10px] text-orange-600 font-bold">⏳ Procesando...</p>}
                       </div>
 
-                      <button type="submit" disabled={isCompressing} className={`w-full text-white py-2 rounded font-bold ${isCompressing ? 'bg-gray-400' : 'bg-green-600'}`}>Guardar Producto en la Nube</button>
+                      <button type="submit" disabled={isCompressing} className="w-full bg-green-600 text-white py-2 rounded font-bold">Guardar Producto</button>
                     </form>
-
-                    <div className="space-y-2">
-                      <h3 className="font-bold text-gray-800">Mi Catálogo Publicado:</h3>
-                      {products.filter(p => p.storeId === loggedStore.id).map(p => (
-                        <div key={p.id} className="flex justify-between items-center border p-2 rounded bg-white">
-                          <div className="flex items-center gap-2">
-                            <img src={p.image} className="w-10 h-10 object-cover rounded bg-gray-200" />
-                            <div>
-                              <p className="font-bold">
-                                {p.name} 
-                                <span className="text-[10px] bg-red-100 text-red-700 px-1 py-0.5 rounded ml-1">[{p.category || 'General'}]</span>
-                                {p.isPromo && <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-1 py-0.5 rounded ml-1">🔥 Promo</span>}
-                              </p>
-                              <p className="text-gray-500">${p.price} / {p.unit || 'Unidad'}</p>
-                            </div>
-                          </div>
-                          <button onClick={()=>handleDeleteProduct(p.id)} className="text-red-600 font-bold px-2 py-1">Eliminar</button>
-                        </div>
-                      ))}
-                    </div>
                   </div>
                 )}
               </div>
@@ -1284,114 +1258,80 @@
                       </button>
                     </div>
 
-                    <div className="border p-3 rounded bg-blue-50 border-blue-200 space-y-1">
-                      <p className="font-bold text-blue-900">💳 Cargar Crédito / Saldo al Admin:</p>
-                      <p className="text-gray-700"><strong>Banco:</strong> {ADMIN_PAYMENT_INFO.banco}</p>
-                      <p className="text-gray-700"><strong>Alias:</strong> <span className="bg-white px-1.5 py-0.5 border rounded font-mono font-bold select-all">{ADMIN_PAYMENT_INFO.alias}</span></p>
-                      <p className="text-gray-700"><strong>Titular:</strong> {ADMIN_PAYMENT_INFO.titular}</p>
-                    </div>
-
-                    {loggedCadete.isOnline && (Number(loggedCadete.balance) || 0) < APP_FEE && (
-                      <div className="bg-red-100 border border-red-400 text-red-800 p-2.5 rounded text-center font-bold">
-                        ⚠️ Saldo insuficiente para recibir envíos. Transfiere al Alias y avisa al Admin.
-                      </div>
-                    )}
-
                     {!loggedCadete.isOnline ? (
                       <div className="bg-yellow-100 border border-yellow-400 text-yellow-800 p-3 rounded text-center font-bold">
-                        Estás desconectado. No verás envíos nuevos hasta que te pongas en línea.
+                        Estás desconectado. No verás envíos nuevos.
                       </div>
                     ) : (
                       <>
                         <h3 className="font-bold text-gray-800 border-b pb-1">Pedidos en Plataforma:</h3>
-                        {orders.filter(o => o.status === 'pendiente' || (o.status === 'en_camino' && o.cadeteId === loggedCadete.id)).map(o => (
-                          <div key={o.id} className="border p-3 rounded bg-gray-50 space-y-2.5">
-                            <div className="flex justify-between font-bold border-b pb-1">
-                              <span className="text-red-600">Pedido Multi-Local</span>
-                              <span className="text-green-700">Ganancia Envío: ${Math.round(o.deliveryFee)}</span>
-                            </div>
-                            
-                            {/* MOSTRAR RUTA DE RETIROS PASO A PASO */}
-                            <div className="bg-amber-50 border border-amber-200 p-2 rounded space-y-1">
-                              <p className="font-bold text-amber-900">📍 Ruta de Retiros:</p>
-                              {o.storesList ? o.storesList.map((s, sIdx) => (
-                                <p key={sIdx} className="text-gray-700 text-[11px]">
-                                  <strong>Parada {sIdx + 1}:</strong> {s.name} ({s.address})
-                                </p>
-                              )) : <p>Retirar en: {o.storeAddress}</p>}
-                            </div>
+                        {orders.filter(o => o.status === 'pendiente' || (o.status === 'en_camino' && o.cadeteId === loggedCadete.id)).map(o => {
+                          // ENLACE GOOGLE MAPS INTELIGENTE (USA COORDENADAS GPS SI LAS HAY, SINO TEXTO)
+                          const mapsUrl = o.coords 
+                            ? `https://www.google.com/maps/search/?api=1&query=${o.coords.lat},${o.coords.lng}`
+                            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.address + ', Catuna, La Rioja')}`;
 
-                            <p><strong>Cliente:</strong> {o.customerName}</p>
-                            <p><strong>Dirección de Entrega:</strong> {o.address}</p>
-                            
-                            <div className="bg-white p-2 rounded text-[11px] border">
-                              <p className="font-bold text-gray-700">Detalle completo a trasladar:</p>
-                              {o.items && o.items.map((i, idx) => (
-                                <p key={idx} className="text-gray-600">• {i.quantity} {i.unit || 'Unid.'} x {i.name} <span className="text-red-600 font-bold">({i.storeName})</span></p>
-                              ))}
-                            </div>
-
-                            <p className="font-bold text-gray-900 bg-yellow-100 p-1.5 rounded">Cobrar al Cliente en mano: ${Math.round(o.total)}</p>
-
-                            <div className="grid grid-cols-2 gap-2 pt-1">
-                              <a 
-                                href={`https://wa.me/549${o.customerPhone}?text=Hola%20${encodeURIComponent(o.customerName)},%20soy%20el%20cadete%20de%20Catuna%20Pedidos.%20Voy%20en%20camino%20con%20tu%20pedido.`} 
-                                target="_blank" 
-                                className="bg-green-600 text-white py-1.5 px-2 rounded text-center font-bold flex items-center justify-center gap-1">
-                                💬 WhatsApp
-                              </a>
-                              <a 
-                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.address + ', Catuna, La Rioja')}`} 
-                                target="_blank" 
-                                className="bg-blue-600 text-white py-1.5 px-2 rounded text-center font-bold flex items-center justify-center gap-1">
-                                📍 Google Maps
-                              </a>
-                            </div>
-
-                            {o.status === 'pendiente' && (
-                              <button onClick={()=>handleAcceptOrder(o.id)} className="w-full bg-green-700 text-white py-2 rounded font-bold shadow mt-2">
-                                Aceptar Envío (-${APP_FEE} comisión app)
-                              </button>
-                            )}
-
-                            {o.status === 'en_camino' && (
-                              <div className="space-y-1.5 pt-2">
-                                <button onClick={()=>handleCompleteOrder(o.id)} className="w-full bg-orange-500 text-white py-2 rounded font-bold">
-                                  Marcar Entregado
-                                </button>
-                                <button onClick={()=>handleRejectOrder(o.id)} className="w-full bg-red-600 text-white py-1.5 rounded font-bold text-[11px] shadow">
-                                  ❌ Rechazar / Liberar Envío (Devolver comisión)
-                                </button>
+                          return (
+                            <div key={o.id} className="border p-3 rounded bg-gray-50 space-y-2.5">
+                              <div className="flex justify-between font-bold border-b pb-1">
+                                <span className="text-red-600">Pedido Multi-Local</span>
+                                <span className="text-green-700">Ganancia: ${Math.round(o.deliveryFee)}</span>
                               </div>
-                            )}
-                          </div>
-                        ))}
+                              
+                              <div className="bg-amber-50 border border-amber-200 p-2 rounded space-y-1">
+                                <p className="font-bold text-amber-900">📍 Ruta de Retiros:</p>
+                                {o.storesList ? o.storesList.map((s, sIdx) => (
+                                  <p key={sIdx} className="text-gray-700 text-[11px]">
+                                    <strong>Parada {sIdx + 1}:</strong> {s.name} ({s.address})
+                                  </p>
+                                )) : <p>Retirar en local</p>}
+                              </div>
+
+                              <p><strong>Cliente:</strong> {o.customerName}</p>
+                              <p><strong>Dirección:</strong> {o.address} {o.coords && <span className="text-blue-600 font-bold">📡 (GPS Exacto)</span>}</p>
+
+                              <div className="grid grid-cols-2 gap-2 pt-1">
+                                <a 
+                                  href={`https://wa.me/549${o.customerPhone}?text=Hola%20${encodeURIComponent(o.customerName)},%20voy%20en%20camino%20con%20tu%20pedido.`} 
+                                  target="_blank" 
+                                  className="bg-green-600 text-white py-1.5 px-2 rounded text-center font-bold">
+                                  💬 WhatsApp
+                                </a>
+                                <a 
+                                  href={mapsUrl} 
+                                  target="_blank" 
+                                  className="bg-blue-600 text-white py-1.5 px-2 rounded text-center font-bold">
+                                  📍 Google Maps
+                                </a>
+                              </div>
+
+                              {o.status === 'pendiente' && (
+                                <button onClick={()=>handleAcceptOrder(o.id)} className="w-full bg-green-700 text-white py-2 rounded font-bold shadow mt-2">
+                                  Aceptar Envío (-${APP_FEE} comisión app)
+                                </button>
+                              )}
+
+                              {o.status === 'en_camino' && (
+                                <div className="space-y-1.5 pt-2">
+                                  <button onClick={()=>handleCompleteOrder(o.id)} className="w-full bg-orange-500 text-white py-2 rounded font-bold">
+                                    Marcar Entregado
+                                  </button>
+                                  <button onClick={()=>handleRejectOrder(o.id)} className="w-full bg-red-600 text-white py-1.5 rounded font-bold text-[11px]">
+                                    ❌ Rechazar / Liberar Envío
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </>
                     )}
-
-                    <div className="border p-3 rounded bg-gray-50 space-y-2 mt-4">
-                      <h3 className="font-bold text-gray-800 border-b pb-1">📜 Mi Historial de Envíos Realizados:</h3>
-                      {orders.filter(o => o.cadeteId === loggedCadete.id && o.status === 'entregado').length === 0 ? (
-                        <p className="text-gray-400 text-center italic py-2">No has completado entregas todavía.</p>
-                      ) : (
-                        orders.filter(o => o.cadeteId === loggedCadete.id && o.status === 'entregado').map(o => (
-                          <div key={o.id} className="bg-white p-2.5 rounded border space-y-1">
-                            <div className="flex justify-between font-bold text-xs text-gray-800">
-                              <span>Multi-Local</span>
-                              <span className="text-blue-700">Cobrado: ${Math.round(o.total)}</span>
-                            </div>
-                            <p className="text-[10px] text-gray-600">Cliente: {o.customerName} ({o.address})</p>
-                          </div>
-                        ))
-                      )}
-                    </div>
-
                   </div>
                 )}
               </div>
             )}
 
-            {/* 4. VISTA ADMIN (PROTEGIDA) */}
+            {/* 4. VISTA ADMIN */}
             {currentTab === 'admin' && (
               <div className="space-y-4 text-xs">
                 {!isAdminLogged ? (
@@ -1407,146 +1347,24 @@
                       <button onClick={()=>setIsAdminLogged(false)} className="text-red-300 font-bold underline">Salir</button>
                     </div>
 
-                    {(() => {
-                      const deliveredOrders = orders.filter(o => o.status === 'entregado');
-                      const totalAppCommissions = deliveredOrders.reduce((sum, o) => sum + (o.subtotal * STORE_COMMISSION_PERCENT), 0);
-                      const totalDeliveryFeesGenerated = deliveredOrders.length * APP_FEE;
-                      const grandTotalRevenue = totalAppCommissions + totalDeliveryFeesGenerated;
-
-                      return (
-                        <div className="border p-3 rounded bg-emerald-50 border-emerald-300 space-y-2">
-                          <h3 className="font-bold text-emerald-900 text-sm">💰 Balance Total Generado por la App</h3>
-                          <div className="grid grid-cols-2 gap-2 text-[11px]">
-                            <div className="bg-white p-2 rounded border">
-                              <p className="text-gray-500">Comisiones (10%):</p>
-                              <p className="font-bold text-emerald-700 text-xs">${Math.round(totalAppCommissions)}</p>
-                            </div>
-                            <div className="bg-white p-2 rounded border">
-                              <p className="text-gray-500">Tarifa Cadetes ($300/envío):</p>
-                              <p className="font-bold text-blue-700 text-xs">${Math.round(totalDeliveryFeesGenerated)}</p>
-                            </div>
-                          </div>
-                          <div className="bg-white p-2 rounded border flex justify-between items-center">
-                            <span className="font-bold text-gray-800">Recaudación Total App:</span>
-                            <span className="font-extrabold text-red-600 text-sm">${Math.round(grandTotalRevenue)}</span>
-                          </div>
-                        </div>
-                      );
-                    })()}
-
                     <form onSubmit={handlePublishAnnouncement} className="border p-3 rounded bg-amber-50 border-amber-300 space-y-2">
                       <h3 className="font-bold text-amber-900 text-sm">📢 Anuncio Global para Clientes</h3>
-                      <input 
-                        placeholder="Ej: ¡Hoy horario especial por feriado!" 
-                        value={announcementInput} 
-                        onChange={e=>setAnnouncementInput(e.target.value)} 
-                        className="w-full p-2 border rounded bg-white" 
-                      />
+                      <input placeholder="Ej: ¡Hoy horario especial por feriado!" value={announcementInput} onChange={e=>setAnnouncementInput(e.target.value)} className="w-full p-2 border rounded bg-white" />
                       <div className="flex gap-2">
-                        <button type="submit" className="flex-1 bg-amber-600 text-white py-1.5 rounded font-bold hover:bg-amber-700 shadow">
-                          Publicar Anuncio
-                        </button>
-                        {globalAnnouncement && (
-                          <button type="button" onClick={handleClearAnnouncement} className="bg-red-600 text-white px-3 py-1.5 rounded font-bold shadow">
-                            Borrar
-                          </button>
-                        )}
+                        <button type="submit" className="flex-1 bg-amber-600 text-white py-1.5 rounded font-bold">Publicar</button>
+                        {globalAnnouncement && <button type="button" onClick={handleClearAnnouncement} className="bg-red-600 text-white px-3 py-1.5 rounded font-bold">Borrar</button>}
                       </div>
-                      {globalAnnouncement && <p className="text-[10px] text-gray-600">Activo actualmente: "{globalAnnouncement}"</p>}
                     </form>
-
-                    <div className="border p-3 rounded bg-orange-50 border-orange-200 space-y-2">
-                      <h3 className="font-bold text-orange-900 text-sm">📊 Rendición de Comisiones (10%)</h3>
-                      {stores.length === 0 ? <p className="text-gray-500">No hay comercios cargados.</p> : null}
-                      {stores.map(store => {
-                        const storeOrders = orders.filter(o => {
-                          const hasStore = o.storeId === store.id || (o.storesInvolved && o.storesInvolved.includes(store.id));
-                          return hasStore && o.status === 'entregado' && !o.storeSettled;
-                        });
-                        
-                        const totalSales = storeOrders.reduce((sum, o) => {
-                          if (o.storesList) {
-                            const myStorePart = o.storesList.find(s => s.storeId === store.id);
-                            if (myStorePart) return sum + myStorePart.items.reduce((s, i) => s + (i.price * i.quantity), 0);
-                          }
-                          return sum + (o.subtotal || 0);
-                        }, 0);
-
-                        const commissionDue = Math.round(totalSales * STORE_COMMISSION_PERCENT);
-
-                        return (
-                          <div key={store.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
-                            <div>
-                              <p className="font-bold text-gray-800">{store.name}</p>
-                              <p className="text-gray-600">Ventas Pendientes: <strong>${Math.round(totalSales)}</strong></p>
-                              <p className="text-orange-700 font-bold">Comisión 10%: ${commissionDue}</p>
-                            </div>
-                            <button 
-                              onClick={()=>handleResetStoreCommission(store.id)}
-                              disabled={commissionDue === 0}
-                              className={`px-2.5 py-1.5 rounded font-bold text-white ${commissionDue > 0 ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-300 cursor-not-allowed'}`}>
-                              Cobrado
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
 
                     <div className="border p-3 rounded bg-gray-50 space-y-2">
                       <h3 className="font-bold text-gray-800 text-sm">🏪 Comercios Registrados</h3>
                       {stores.map(store => (
                         <div key={store.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
-                          <div>
-                            <p className="font-bold text-gray-800">
-                              {store.name} 
-                              {store.isSuspended && <span className="text-red-600 ml-1 text-[10px] bg-red-100 px-1 rounded font-bold">⚠️ SUSPENDIDO</span>}
-                            </p>
-                            <p className="text-gray-500 text-[11px]">{store.address}</p>
-                          </div>
-                          <div className="flex gap-1">
-                            <button 
-                              onClick={() => handleToggleStoreSuspension(store.id, store.isSuspended)}
-                              className={`font-bold px-2 py-1.5 rounded text-[10px] shadow text-white ${store.isSuspended ? 'bg-green-600' : 'bg-yellow-600'}`}>
-                              {store.isSuspended ? 'Habilitar' : 'Suspender'}
-                            </button>
-                            <button onClick={() => handleDeleteStore(store.id, store.name)} className="bg-red-600 text-white font-bold px-2 py-1.5 rounded text-[10px] shadow">🗑️</button>
-                          </div>
+                          <p className="font-bold text-gray-800">{store.name}</p>
+                          <button onClick={() => handleDeleteStore(store.id, store.name)} className="bg-red-600 text-white font-bold px-2 py-1 rounded text-[10px]">🗑️</button>
                         </div>
                       ))}
                     </div>
-
-                    <div className="border p-3 rounded bg-blue-50 border-blue-200 space-y-2">
-                      <h3 className="font-bold text-blue-900 text-sm">🛵 Cadetes Registrados</h3>
-                      {cadetes.map(cadete => (
-                        <div key={cadete.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
-                          <div>
-                            <p className="font-bold text-gray-800">
-                              {cadete.name} ({cadete.vehicle})
-                              {cadete.isSuspended && <span className="text-red-600 ml-1 text-[10px] bg-red-100 px-1 rounded font-bold">⚠️ SUSPENDIDO</span>}
-                            </p>
-                            <p className="text-gray-500 text-[11px]">Saldo: ${cadete.balance || 0}</p>
-                          </div>
-                          <div className="flex gap-1">
-                            <button 
-                              onClick={() => handleToggleCadeteSuspension(cadete.id, cadete.isSuspended)}
-                              className={`font-bold px-2 py-1.5 rounded text-[10px] shadow text-white ${cadete.isSuspended ? 'bg-green-600' : 'bg-yellow-600'}`}>
-                              {cadete.isSuspended ? 'Habilitar' : 'Suspender'}
-                            </button>
-                            <button onClick={() => handleDeleteCadete(cadete.id, cadete.name)} className="bg-red-600 text-white font-bold px-2 py-1.5 rounded text-[10px] shadow">🗑️</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <form onSubmit={handleRechargeBalance} className="border p-3 rounded bg-green-50 border-green-200 space-y-2">
-                      <h3 className="font-bold text-green-900">💵 Acreditar Saldo a Cadete</h3>
-                      <select required value={selectedCadeteId} onChange={e=>setSelectedCadeteId(e.target.value)} className="w-full p-2 border rounded bg-white">
-                        <option value="">Selecciona un cadete...</option>
-                        {cadetes.map(c => <option key={c.id} value={c.id}>{c.name} (Saldo actual: ${c.balance || 0})</option>)}
-                      </select>
-                      <input required type="number" placeholder="Monto a recargar ($)" value={rechargeAmount} onChange={e=>setRechargeAmount(e.target.value)} className="w-full p-2 border rounded" />
-                      <button type="submit" className="w-full bg-green-700 text-white py-2 rounded font-bold">Cargar Saldo</button>
-                    </form>
                   </div>
                 )}
               </div>
