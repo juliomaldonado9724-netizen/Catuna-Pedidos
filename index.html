@@ -60,6 +60,7 @@
       const [searchTerm, setSearchTerm] = useState('');
       const [orderPrepTimes, setOrderPrepTimes] = useState({});
       const [currentTime, setCurrentTime] = useState(Date.now());
+      const [isCartOpen, setIsCartOpen] = useState(false); // NUEVO: MODAL/VISTA DEL CARRITO DETALLADO
 
       useEffect(() => {
         const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
@@ -79,7 +80,6 @@
         const unsubOrders = db.collection('orders').onSnapshot(snapshot => {
           setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
-        // ESCUCHAR ANUNCIO GLOBAL DEL ADMIN
         const unsubConfig = db.collection('config').doc('announcement').onSnapshot(doc => {
           if (doc.exists) {
             setGlobalAnnouncement(doc.data().text || '');
@@ -221,7 +221,7 @@
             titular: newStoreTitular,
             hours: newStoreHours || '08:00 a 23:00 hs',
             isOpen: true,
-            isSuspended: false, // NUEVO: ESTADO DE SUSPENSIÓN
+            isSuspended: false,
             user: newStoreUser, 
             pass: newStorePass,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -264,7 +264,7 @@
             pass: newCadetePass, 
             balance: 0, 
             isOnline: true,
-            isSuspended: false, // NUEVO: ESTADO DE SUSPENSIÓN
+            isSuspended: false,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
           setNewCadeteName(''); setNewCadetePhone(''); setNewCadeteUser(''); setNewCadetePass(''); setNewCadeteVehicle('Moto');
@@ -532,6 +532,18 @@
         } else {
           setCart([...cart, { ...product, quantity: qtyToAdd }]);
         }
+        setIsCartOpen(true); // Abrir automáticamente el modal del carrito para que el cliente confirme visualmente
+      };
+
+      // FUNCIONES DE GESTIÓN DEL CARRITO DETALLADO
+      const updateCartItemQuantity = (productId, newQty) => {
+        const qty = Number(newQty);
+        if (qty <= 0) {
+          setCart(cart.filter(item => item.id !== productId));
+          if (cart.length <= 1) setSelectedStore(null);
+        } else {
+          setCart(cart.map(item => item.id === productId ? { ...item, quantity: qty } : item));
+        }
       };
 
       const handleCreateOrder = async (e) => {
@@ -568,6 +580,8 @@
 
           setLastOrderSent({ storePhone: selectedStore.phone, storeName: selectedStore.name, total: Math.round(subtotal + DELIVERY_FEE) });
           setCart([]);
+          setSelectedStore(null);
+          setIsCartOpen(false);
           setCustName(''); setCustPhone(''); setCustAddress('');
           alert("¡Pedido enviado con éxito! Se notificó al negocio por WhatsApp.");
         } catch (err) {
@@ -575,7 +589,6 @@
         }
       };
 
-      // SOLO MOSTRAR COMERCIOS NO SUSPENDIDOS AL CLIENTE
       const filteredStores = stores.filter(store => {
         if (store.isSuspended) return false;
         const query = searchTerm.toLowerCase().trim();
@@ -613,8 +626,11 @@
         return `⏳ ${hours}h ${minutes}m ${seconds}s`;
       };
 
+      const totalCartItemsCount = cart.reduce((sum, item) => sum + Number(item.quantity), 0);
+      const cartSubtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
       return (
-        <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl">
+        <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl relative pb-24">
           <header className="bg-red-600 text-white p-4 sticky top-0 z-50 flex justify-between items-center shadow">
             <div>
               <h1 className="text-xl font-bold">Catuna Pedidos</h1>
@@ -623,7 +639,6 @@
             <span className="text-xs bg-red-700 px-2 py-1 rounded font-bold uppercase">{currentTab}</span>
           </header>
 
-          {/* ANUNCIO GLOBAL EN VIVO PARA CLIENTES */}
           {globalAnnouncement && currentTab === 'cliente' && (
             <div className="bg-amber-500 text-amber-950 font-bold px-4 py-2 text-xs text-center border-b border-amber-600 shadow-inner flex items-center justify-center gap-2">
               <span>📢</span> <span>{globalAnnouncement}</span>
@@ -637,7 +652,7 @@
             <button onClick={() => setCurrentTab('admin')} className={`py-1 px-3 rounded ${currentTab==='admin'?'bg-red-600 font-bold':''}`}>🔒 Admin</button>
           </nav>
 
-          <main className="flex-1 p-4 pb-20 overflow-y-auto">
+          <main className="flex-1 p-4 overflow-y-auto">
 
             {/* 1. VISTA CLIENTE */}
             {currentTab === 'cliente' && (
@@ -675,7 +690,6 @@
                       {promoProducts.map(prod => {
                         const store = stores.find(s => s.id === prod.storeId);
                         const currentQty = selectedQtyMap[prod.id] !== undefined ? selectedQtyMap[prod.id] : 1;
-                        const calculatedPrice = Math.round(prod.price * (Number(currentQty) || 1));
 
                         return (
                           <div key={prod.id} className="min-w-[190px] max-w-[190px] bg-white p-2 rounded-lg border border-red-200 shadow-sm flex flex-col justify-between flex-shrink-0">
@@ -836,27 +850,90 @@
                   })
                 )}
 
+                {/* BOTÓN FLOTANTE INFERIOR DEL CARRITO */}
                 {cart.length > 0 && (
-                  <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t-2 border-red-600 p-4 shadow-2xl z-50">
-                    <h3 className="font-bold text-sm mb-1 text-gray-800">Pedido para {selectedStore?.name}</h3>
-                    
-                    <div className="max-h-24 overflow-y-auto mb-2 text-[11px] bg-gray-50 p-1.5 rounded border">
-                      {cart.map((item, idx) => (
-                        <div key={idx} className="flex justify-between text-gray-700 py-0.5 border-b last:border-b-0">
-                          <span>{item.quantity} {item.unit || 'Unid.'} x {item.name}</span>
-                          <span className="font-bold">${Math.round(item.price * item.quantity)}</span>
-                        </div>
-                      ))}
+                  <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-gray-900 text-white p-3 shadow-2xl z-50 flex justify-between items-center border-t-2 border-red-500">
+                    <div>
+                      <p className="text-[10px] text-gray-300">Comercio: <strong className="text-white">{selectedStore?.name}</strong></p>
+                      <p className="text-xs font-bold">🛒 {totalCartItemsCount} ítems | Subtotal: ${Math.round(cartSubtotal)}</p>
                     </div>
+                    <button 
+                      onClick={() => setIsCartOpen(true)}
+                      className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-bold text-xs shadow animate-pulse">
+                      Ver Carrito y Pedir ➔
+                    </button>
+                  </div>
+                )}
 
-                    <form onSubmit={handleCreateOrder} className="space-y-2">
-                      <input required placeholder="Tu Nombre" value={custName} onChange={e=>setCustName(e.target.value)} className="w-full text-xs p-1.5 border rounded" />
-                      <input required placeholder="Teléfono WhatsApp (Ej: 3826123456)" value={custPhone} onChange={e=>setCustPhone(e.target.value)} className="w-full text-xs p-1.5 border rounded" />
-                      <input required placeholder="Dirección / Referencias de Entrega" value={custAddress} onChange={e=>setCustAddress(e.target.value)} className="w-full text-xs p-1.5 border rounded" />
-                      <button type="submit" className="w-full bg-red-600 text-white py-2 rounded font-bold text-xs">
-                        Confirmar Pedido Total: (${Math.round(cart.reduce((s,i)=>s+(i.price*i.quantity),0)) + DELIVERY_FEE})
-                      </button>
-                    </form>
+                {/* MODAL / PANTALLA DETALLADA DEL CARRITO */}
+                {isCartOpen && (
+                  <div className="fixed inset-0 bg-black/60 z-50 flex flex-col justify-end max-w-md mx-auto">
+                    <div className="bg-white rounded-t-2xl p-4 space-y-3 max-h-[85vh] overflow-y-auto shadow-2xl animate-slide-up">
+                      <div className="flex justify-between items-center border-b pb-2">
+                        <div>
+                          <h3 className="font-extrabold text-sm text-gray-900">🛒 Tu Carrito de Compras</h3>
+                          <p className="text-[11px] text-gray-500">Negocio: <strong>{selectedStore?.name}</strong></p>
+                        </div>
+                        <button onClick={() => setIsCartOpen(false)} className="text-gray-400 font-bold text-sm p-1 hover:text-gray-600">✕</button>
+                      </div>
+
+                      {/* LISTA DETALLADA DE PRODUCTOS CON CONTROL DE CANTIDAD */}
+                      <div className="space-y-2 max-h-48 overflow-y-auto bg-gray-50 p-2 rounded-lg border">
+                        {cart.map((item, idx) => (
+                          <div key={idx} className="flex justify-between items-center bg-white p-2 rounded border text-xs shadow-sm">
+                            <div className="flex-1 pr-2">
+                              <p className="font-bold text-gray-800">{item.name}</p>
+                              <p className="text-[10px] text-gray-500">${item.price} c/u ({item.unit || 'Unid.'})</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input 
+                                type="number" 
+                                min="0.1" 
+                                step={item.unit === 'Kg' ? '0.25' : '1'}
+                                value={item.quantity} 
+                                onChange={(e) => updateCartItemQuantity(item.id, e.target.value)}
+                                className="w-14 text-center p-1 border rounded font-bold text-xs bg-gray-50"
+                              />
+                              <span className="font-extrabold text-red-600 w-16 text-right">${Math.round(item.price * item.quantity)}</span>
+                              <button onClick={() => updateCartItemQuantity(item.id, 0)} className="text-red-500 font-bold text-xs px-1 hover:text-red-700">🗑️</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* DESGLOSE DE TOTALES */}
+                      <div className="bg-gray-100 p-2.5 rounded-lg text-xs space-y-1">
+                        <div className="flex justify-between text-gray-600">
+                          <span>Subtotal Productos:</span>
+                          <span className="font-bold">${Math.round(cartSubtotal)}</span>
+                        </div>
+                        <div className="flex justify-between text-gray-600">
+                          <span>Costo de Envíos (Cadete):</span>
+                          <span className="font-bold">${DELIVERY_FEE}</span>
+                        </div>
+                        <div className="flex justify-between text-gray-900 font-extrabold text-sm pt-1 border-t border-gray-300">
+                          <span>TOTAL A PAGAR:</span>
+                          <span className="text-red-600">${Math.round(cartSubtotal + DELIVERY_FEE)}</span>
+                        </div>
+                      </div>
+
+                      {/* FORMULARIO DE DATOS DE ENVÍO */}
+                      <form onSubmit={handleCreateOrder} className="space-y-2 pt-1">
+                        <p className="text-xs font-bold text-gray-800">Datos para la entrega:</p>
+                        <input required placeholder="Tu Nombre Completo" value={custName} onChange={e=>setCustName(e.target.value)} className="w-full text-xs p-2 border rounded" />
+                        <input required placeholder="Teléfono WhatsApp (Ej: 3826123456)" value={custPhone} onChange={e=>setCustPhone(e.target.value)} className="w-full text-xs p-2 border rounded" />
+                        <input required placeholder="Dirección exacta / Referencias" value={custAddress} onChange={e=>setCustAddress(e.target.value)} className="w-full text-xs p-2 border rounded" />
+                        
+                        <div className="flex gap-2 pt-2">
+                          <button type="button" onClick={() => setIsCartOpen(false)} className="flex-1 bg-gray-300 text-gray-700 py-2 rounded font-bold text-xs">
+                            Seguir Comprando
+                          </button>
+                          <button type="submit" className="flex-1 bg-red-600 text-white py-2 rounded font-bold text-xs shadow hover:bg-red-700">
+                            Confirmar Pedido 🚀
+                          </button>
+                        </div>
+                      </form>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1285,7 +1362,6 @@
                       <button onClick={()=>setIsAdminLogged(false)} className="text-red-300 font-bold underline">Salir</button>
                     </div>
 
-                    {/* NUEVO: RESUMEN DE GANANCIAS TOTALES DE LA APP */}
                     {(() => {
                       const deliveredOrders = orders.filter(o => o.status === 'entregado');
                       const totalAppCommissions = deliveredOrders.reduce((sum, o) => sum + (o.subtotal * STORE_COMMISSION_PERCENT), 0);
@@ -1313,7 +1389,6 @@
                       );
                     })()}
 
-                    {/* NUEVO: PANEL DE ANUNCIO GLOBAL */}
                     <form onSubmit={handlePublishAnnouncement} className="border p-3 rounded bg-amber-50 border-amber-300 space-y-2">
                       <h3 className="font-bold text-amber-900 text-sm">📢 Anuncio Global para Clientes</h3>
                       <input 
@@ -1435,7 +1510,7 @@
 
                     <form onSubmit={handleCreateCadete} className="border p-3 rounded bg-gray-50 space-y-2">
                       <h3 className="font-bold text-gray-800">Registrar Nuevo Cadete</h3>
-                      <input required type="text" placeholder="Nombre completo" value={newCadeteName} onChange={e=>setNewCadeteName(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required type="text" placeholder="Nombre completo" value={newCadeteName} onChange={e=>newCadeteName(e.target.value)} className="w-full p-2 border rounded" />
                       <input required type="text" placeholder="Teléfono WhatsApp (Ej: 3826123456)" value={newCadetePhone} onChange={e=>setNewCadetePhone(e.target.value)} className="w-full p-2 border rounded" />
                       <select value={newCadeteVehicle} onChange={e=>setNewCadeteVehicle(e.target.value)} className="w-full p-2 border rounded bg-white">
                         <option value="Moto">Moto</option>
