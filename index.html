@@ -56,7 +56,6 @@
       const [cadetes, setCadetes] = useState([]);
       const [orders, setOrders] = useState([]);
 
-      // ESTADO DEL BUSCADOR DE TIENDAS/PRODUCTOS
       const [searchTerm, setSearchTerm] = useState('');
 
       useEffect(() => {
@@ -254,7 +253,7 @@
       };
 
       const handleResetStoreCommission = async (storeId) => {
-        if (confirm("¿Confirmas que el comercio abonó la comisión acumulada?")) {
+        if (confirm("¿Confirmas que abonaste la comisión acumulada? Esto pondrá tu saldo deudor en $0.")) {
           try {
             const batch = db.batch();
             const storeOrders = orders.filter(o => o.storeId === storeId && o.status === 'entregado' && !o.storeSettled);
@@ -263,7 +262,7 @@
               batch.update(ref, { storeSettled: true });
             });
             await batch.commit();
-            alert("Comisión cobrada y cuentas saldadas.");
+            alert("¡Comisión rendida con éxito! Tu saldo queda saldado.");
           } catch (err) {
             alert("Error al saldar cuentas: " + err.message);
           }
@@ -436,15 +435,11 @@
         }
       };
 
-      // FILTRADO DINÁMICO DE TIENDAS Y PRODUCTOS
       const filteredStores = stores.filter(store => {
         const query = searchTerm.toLowerCase().trim();
         if (!query) return true;
 
-        // Coincidencia con nombre o dirección del negocio
         const matchesStore = store.name.toLowerCase().includes(query) || (store.address && store.address.toLowerCase().includes(query));
-        
-        // Coincidencia con algún producto del negocio
         const storeProds = products.filter(p => p.storeId === store.id);
         const matchesProduct = storeProds.some(p => p.name.toLowerCase().includes(query) || (p.description && p.description.toLowerCase().includes(query)));
 
@@ -487,7 +482,6 @@
                   </div>
                 )}
 
-                {/* BUSCADOR DE TIENDAS Y PRODUCTOS */}
                 <div className="relative">
                   <input 
                     type="text"
@@ -512,13 +506,11 @@
                   </div>
                 ) : (
                   filteredStores.map(store => {
-                    // Filtrar productos del negocio si hay búsqueda activa
                     const storeProducts = products.filter(p => {
                       if (p.storeId !== store.id) return false;
                       const q = searchTerm.toLowerCase().trim();
                       if (!q) return true;
                       
-                      // Si el nombre del negocio coincide, muestra todos sus productos; si no, solo los que coincidan con la búsqueda
                       const matchesStore = store.name.toLowerCase().includes(q) || (store.address && store.address.toLowerCase().includes(q));
                       if (matchesStore) return true;
 
@@ -562,7 +554,6 @@
                                     <p className="text-xs text-gray-500">{prod.description}</p>
                                     <p className="text-xs font-bold text-red-600 mt-0.5">${prod.price} <span className="text-[10px] text-gray-400">/ {prod.unit || 'Unidad'}</span></p>
                                     
-                                    {/* SELECTOR DE CANTIDAD O PESO */}
                                     <div className="mt-1 flex items-center gap-1.5">
                                       <span className="text-[10px] font-semibold text-gray-600">Cant:</span>
                                       <input 
@@ -642,6 +633,44 @@
                       </div>
                       <button onClick={()=>setLoggedStore(null)} className="text-red-600 font-bold underline">Salir</button>
                     </div>
+
+                    {/* RESUMEN FINANCIERO Y RENDICIÓN DE COMISIÓN PARA EL COMERCIO */}
+                    {(() => {
+                      const storeOrders = orders.filter(o => o.storeId === loggedStore.id && o.status === 'entregado' && !o.storeSettled);
+                      const totalSales = storeOrders.reduce((sum, o) => sum + o.subtotal, 0);
+                      const commissionDue = Math.round(totalSales * STORE_COMMISSION_PERCENT);
+                      const storeNetProfit = Math.round(totalSales - commissionDue);
+
+                      return (
+                        <div className="border p-3 rounded bg-amber-50 border-amber-200 space-y-2">
+                          <h3 className="font-bold text-amber-900 text-sm">📊 Resumen de Ventas y Comisión</h3>
+                          <div className="grid grid-cols-2 gap-2 text-[11px]">
+                            <div className="bg-white p-2 rounded border">
+                              <p className="text-gray-500">Ventas Totales:</p>
+                              <p className="font-bold text-gray-800 text-xs">${Math.round(totalSales)}</p>
+                            </div>
+                            <div className="bg-white p-2 rounded border">
+                              <p className="text-gray-500">Tu Ganancia (90%):</p>
+                              <p className="font-bold text-green-700 text-xs">${storeNetProfit}</p>
+                            </div>
+                          </div>
+
+                          <div className="bg-white p-2.5 rounded border flex justify-between items-center">
+                            <div>
+                              <p className="text-xs text-amber-900 font-bold">Comisión 10% a abonar al Admin:</p>
+                              <p className="text-sm font-extrabold text-red-600">${commissionDue}</p>
+                              <p className="text-[10px] text-gray-500">Alias Admin: <span className="font-mono font-bold">{ADMIN_PAYMENT_INFO.alias}</span></p>
+                            </div>
+                            <button 
+                              onClick={() => handleResetStoreCommission(loggedStore.id)}
+                              disabled={commissionDue === 0}
+                              className={`px-3 py-1.5 rounded font-bold text-white text-xs ${commissionDue > 0 ? 'bg-green-600 shadow hover:bg-green-700' : 'bg-gray-300 cursor-not-allowed'}`}>
+                              {commissionDue > 0 ? 'Cobrar / Saldar' : 'Al día'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     <div className="border p-3 rounded bg-gray-50 flex justify-between items-center">
                       <div>
@@ -885,19 +914,19 @@
                       {stores.map(store => {
                         const storeOrders = orders.filter(o => o.storeId === store.id && o.status === 'entregado' && !o.storeSettled);
                         const totalSales = storeOrders.reduce((sum, o) => sum + o.subtotal, 0);
-                        const commissionDue = totalSales * STORE_COMMISSION_PERCENT;
+                        const commissionDue = Math.round(totalSales * STORE_COMMISSION_PERCENT);
 
                         return (
                           <div key={store.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
                             <div>
                               <p className="font-bold text-gray-800">{store.name}</p>
                               <p className="text-gray-600">Ventas Pendientes: <strong>${Math.round(totalSales)}</strong></p>
-                              <p className="text-orange-700 font-bold">Comisión 10%: ${Math.round(commissionDue)}</p>
+                              <p className="text-orange-700 font-bold">Comisión 10%: ${commissionDue}</p>
                             </div>
                             <button 
                               onClick={()=>handleResetStoreCommission(store.id)}
                               disabled={commissionDue === 0}
-                              className={`px-2.5 py-1.5 rounded font-bold text-white ${commissionDue > 0 ? 'bg-orange-600' : 'bg-gray-300'}`}>
+                              className={`px-2.5 py-1.5 rounded font-bold text-white ${commissionDue > 0 ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-300 cursor-not-allowed'}`}>
                               Cobrado
                             </button>
                           </div>
@@ -905,7 +934,6 @@
                       })}
                     </div>
 
-                    {/* SECCIÓN GESTIÓN Y ELIMINACIÓN DE COMERCIOS */}
                     <div className="border p-3 rounded bg-gray-50 space-y-2">
                       <h3 className="font-bold text-gray-800 text-sm">🏪 Comercios Registrados</h3>
                       {stores.length === 0 ? (
@@ -928,7 +956,6 @@
                       )}
                     </div>
 
-                    {/* SECCIÓN GESTIÓN Y ELIMINACIÓN DE CADETES */}
                     <div className="border p-3 rounded bg-blue-50 border-blue-200 space-y-2">
                       <h3 className="font-bold text-blue-900 text-sm">🛵 Cadetes / Repartidores Registrados</h3>
                       {cadetes.length === 0 ? (
