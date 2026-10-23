@@ -101,12 +101,12 @@
       const [custName, setCustName] = useState('');
       const [custPhone, setCustPhone] = useState('');
       const [custAddress, setCustAddress] = useState('');
-      const [lastOrderSent, setLastOrderSent] = useState(null); // Guarda el último pedido para mostrar el botón de enviar comprobante
+      const [lastOrderSent, setLastOrderSent] = useState(null);
 
       // --- ACCIONES ADMIN ---
       const handleAdminLogin = (e) => {
         e.preventDefault();
-        if (adminPass === 'admin123') setIsAdminLogged(true);
+        if (adminPass === 'Aithana2411') setIsAdminLogged(true);
         else alert("Contraseña de Admin incorrecta");
       };
 
@@ -285,7 +285,6 @@
             {/* 1. VISTA CLIENTE */}
             {currentTab === 'cliente' && (
               <div className="space-y-6">
-                {/* BOTÓN FLOTANTE PARA ENVIAR COMPROBANTE SI ACABA DE PEDIR */}
                 {lastOrderSent && (
                   <div className="bg-green-50 border-2 border-green-500 p-3 rounded-lg text-center space-y-2 shadow-md">
                     <p className="font-bold text-green-900 text-sm">✅ ¡Pedido realizado a {lastOrderSent.storeName}!</p>
@@ -319,7 +318,6 @@
                         </span>
                       </div>
 
-                      {/* DATOS BANCARIOS DEL LOCAL PARA EL CLIENTE */}
                       {store.alias && (
                         <div className="bg-amber-50 border border-amber-200 p-2 rounded text-[11px] space-y-0.5">
                           <p className="font-bold text-amber-900">💳 Datos para transferir la comida:</p>
@@ -570,7 +568,7 @@
                     <form onSubmit={handleCreateCadete} className="border p-3 rounded bg-gray-50 space-y-2">
                       <h3 className="font-bold text-gray-800">Registrar Nuevo Cadete</h3>
                       <input required placeholder="Nombre completo" value={newCadeteName} onChange={e=>setNewCadeteName(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required placeholder="Teléfono WhatsApp" value={newCadetePhone} onChange={e=>newCadetePhone(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required placeholder="Teléfono WhatsApp" value={newCadetePhone} onChange={e=>setNewCadetePhone(e.target.value)} className="w-full p-2 border rounded" />
                       <select value={newCadeteVehicle} onChange={e=>setNewCadeteVehicle(e.target.value)} className="w-full p-2 border rounded bg-white">
                         <option value="Moto">Moto</option>
                         <option value="Bicicleta">Bicicleta</option>
@@ -588,13 +586,13 @@
                       <h3 className="font-bold text-gray-800">Registrar Nuevo Comercio (con datos de pago)</h3>
                       <input required placeholder="Nombre del Negocio" value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} className="w-full p-2 border rounded" />
                       <input required placeholder="Dirección del Local" value={newStoreAddress} onChange={e=>setNewStoreAddress(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required placeholder="WhatsApp del local (Ej: 3826123456)" value={newStorePhone} onChange={e=>setNewStorePhone(e.target.value)} className="w-full p-2 border rounded" />
-                      <input placeholder="Alias de Mercado Pago del Local" value={newStoreAlias} onChange={e=>newStoreAlias(e.target.value)} className="w-full p-2 border rounded font-mono" />
-                      <input placeholder="Nombre del Titular de la cuenta" value={newStoreTitular} onChange={e=>newStoreTitular(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required placeholder="Horario (Ej: 20:00 a 00:00 hs)" value={newStoreHours} onChange={e=>newStoreHours(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required placeholder="WhatsApp del local (Ej: 3826123456)" value={newStorePhone} onChange={e=>newStorePhone(e.target.value)} className="w-full p-2 border rounded" />
+                      <input placeholder="Alias de Mercado Pago del Local" value={newStoreAlias} onChange={e=>setNewStoreAlias(e.target.value)} className="w-full p-2 border rounded font-mono" />
+                      <input placeholder="Nombre del Titular de la cuenta" value={newStoreTitular} onChange={e=>setNewStoreTitular(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required placeholder="Horario (Ej: 20:00 a 00:00 hs)" value={newStoreHours} onChange={e=>setNewStoreHours(e.target.value)} className="w-full p-2 border rounded" />
                       <div className="grid grid-cols-2 gap-2">
-                        <input required placeholder="Usuario" value={newStoreUser} onChange={e=>newStoreUser(e.target.value)} className="w-full p-2 border rounded" />
-                        <input required placeholder="Contraseña" value={newStorePass} onChange={e=>newStorePass(e.target.value)} className="w-full p-2 border rounded" />
+                        <input required placeholder="Usuario" value={newStoreUser} onChange={e=>setNewStoreUser(e.target.value)} className="w-full p-2 border rounded" />
+                        <input required placeholder="Contraseña" value={newStorePass} onChange={e=>setNewStorePass(e.target.value)} className="w-full p-2 border rounded" />
                       </div>
                       <button type="submit" className="w-full bg-gray-700 text-white py-2 rounded font-bold">Crear Comercio</button>
                     </form>
