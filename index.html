@@ -131,7 +131,7 @@
 
       const handleCreateCadete = (e) => {
         e.preventDefault();
-        const cadete = { id: Date.now(), name: newCadeteName, phone: newCadetePhone, vehicle: newCadeteVehicle, user: newCadeteUser, pass: newCadetePass, balance: 0 };
+        const cadete = { id: Date.now(), name: newCadeteName, phone: newCadetePhone, vehicle: newCadeteVehicle, user: newCadeteUser, pass: newCadetePass, balance: 0, isOnline: true };
         setCadetes([...cadetes, cadete]);
         setNewCadeteName(''); setNewCadetePhone(''); setNewCadeteUser(''); setNewCadetePass('');
         alert("Cadete creado exitosamente.");
@@ -190,8 +190,20 @@
         else alert("Usuario o clave incorrectos");
       };
 
+      const toggleCadeteOnlineStatus = () => {
+        if (!loggedCadete) return;
+        const updatedStatus = !loggedCadete.isOnline;
+        const updatedCadete = { ...loggedCadete, isOnline: updatedStatus };
+        setLoggedCadete(updatedCadete);
+        setCadetes(cadetes.map(c => c.id === loggedCadete.id ? updatedCadete : c));
+      };
+
       const handleAcceptOrder = (orderId) => {
         if (!loggedCadete) return;
+        if (!loggedCadete.isOnline) {
+          alert("Estás desconectado. Debes ponerte en línea para aceptar viajes.");
+          return;
+        }
         if (loggedCadete.balance < APP_FEE) {
           alert(`Saldo insuficiente. Necesitas al menos $${APP_FEE} para tomar un viaje. Recarga saldo transfiriendo al Admin.`);
           return;
@@ -249,7 +261,6 @@
         };
         setOrders([newOrder, ...orders]);
 
-        // GENERAR MENSAJE DE WHATSAPP PARA EL COMERCIO
         const itemsList = cart.map(i => `• ${i.quantity}x ${i.name} ($${i.price * i.quantity})`).join('%0A');
         const msg = `🔔 *NUEVO PEDIDO - Catuna Pedidos*%0A%0A*Cliente:* ${encodeURIComponent(custName)}%0A*Tel:* ${encodeURIComponent(custPhone)}%0A*Dirección:* ${encodeURIComponent(custAddress)}%0A%0A*Productos:*%0A${itemsList}%0A%0A*Subtotal Comida:* $${subtotal}%0A*Envío:* $${DELIVERY_FEE}%0A*TOTAL A PAGAR:* $${subtotal + DELIVERY_FEE}`;
         
@@ -397,6 +408,44 @@
                       </button>
                     </div>
 
+                    {/* SECCIÓN DE PEDIDOS EN CURSO PARA EL COMERCIO (CON BOTÓN DE AVISAR AL CADETE) */}
+                    <div className="space-y-2">
+                      <h3 className="font-bold text-gray-800 border-b pb-1">Pedidos de mis Clientes:</h3>
+                      {orders.filter(o => o.storeId === loggedStore.id && o.status !== 'entregado').length === 0 ? (
+                        <p className="text-gray-500 text-center py-2">No hay pedidos activos en este momento.</p>
+                      ) : (
+                        orders.filter(o => o.storeId === loggedStore.id && o.status !== 'entregado').map(o => {
+                          const assignedCadete = cadetes.find(c => c.id === o.cadeteId);
+                          return (
+                            <div key={o.id} className="border p-3 rounded bg-white shadow-sm space-y-2">
+                              <div className="flex justify-between font-bold">
+                                <span className="text-gray-800">Cliente: {o.customerName}</span>
+                                <span className={o.status === 'en_camino' ? 'text-blue-600' : 'text-orange-600'}>
+                                  {o.status === 'pendiente' ? '⏳ Esperando Cadete' : '🛵 En Camino'}
+                                </span>
+                              </div>
+                              <p className="text-gray-600"><strong>Dirección:</strong> {o.address}</p>
+                              <p className="text-gray-600 font-semibold">Total a cobrar: ${o.total}</p>
+
+                              {assignedCadete ? (
+                                <div className="bg-blue-50 border border-blue-200 p-2 rounded space-y-2 mt-2">
+                                  <p className="text-blue-900 font-bold">Cadete asignado: {assignedCadete.name} ({assignedCadete.vehicle})</p>
+                                  <a 
+                                    href={`https://wa.me/549${assignedCadete.phone}?text=Hola%20${encodeURIComponent(assignedCadete.name)},%20el%20pedido%20de%20${encodeURIComponent(o.customerName)}%20ya%20está%20listo%20en%20el%20local%20para%20que%20lo%20pases%20a%20retirar.%20Dirección%20de%20entrega:%20${encodeURIComponent(o.address)}`}
+                                    target="_blank"
+                                    className="block w-full bg-green-600 text-white text-center font-bold py-1.5 rounded shadow hover:bg-green-700">
+                                    💬 Avisar al Cadete que está listo
+                                  </a>
+                                </div>
+                              ) : (
+                                <p className="text-gray-400 italic text-[11px]">Aún ningun cadete aceptó este viaje.</p>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
                     <form onSubmit={handleAddProduct} className="border p-3 rounded bg-gray-50 space-y-2">
                       <h3 className="font-bold text-gray-800">Cargar Producto al Menú</h3>
                       <input required placeholder="Nombre del plato" value={prodName} onChange={e=>setProdName(e.target.value)} className="w-full p-2 border rounded" />
@@ -451,6 +500,18 @@
                       </div>
                     </div>
 
+                    <div className="border p-3 rounded bg-gray-50 flex justify-between items-center">
+                      <div>
+                        <p className="font-bold text-gray-800">Mi Estado:</p>
+                        <p className="text-gray-500 text-[11px]">Ponte en línea para ver y tomar pedidos.</p>
+                      </div>
+                      <button 
+                        onClick={toggleCadeteOnlineStatus} 
+                        className={`px-3 py-1.5 rounded font-bold text-white shadow ${loggedCadete.isOnline ? 'bg-green-600' : 'bg-red-600'}`}>
+                        {loggedCadete.isOnline ? '🟢 EN LÍNEA' : '🔴 DESCONECTADO'}
+                      </button>
+                    </div>
+
                     <div className="border p-3 rounded bg-blue-50 border-blue-200 space-y-1">
                       <p className="font-bold text-blue-900">💳 Cargar Crédito / Saldo al Admin:</p>
                       <p className="text-gray-700"><strong>Banco:</strong> {ADMIN_PAYMENT_INFO.banco}</p>
@@ -459,52 +520,60 @@
                       <p className="text-gray-500 text-[11px] pt-1">* Realiza la transferencia y avísale al Admin para que te acredite el saldo en la app.</p>
                     </div>
 
-                    {loggedCadete.balance < APP_FEE && (
+                    {loggedCadete.isOnline && loggedCadete.balance < APP_FEE && (
                       <div className="bg-red-100 border border-red-400 text-red-800 p-2.5 rounded text-center font-bold">
                         ⚠️ Saldo insuficiente para recibir viajes. Transfiere al Alias de arriba y avisa al Admin.
                       </div>
                     )}
 
-                    <h3 className="font-bold text-gray-800 border-b pb-1">Pedidos en Plataforma:</h3>
-                    {orders.filter(o => o.status === 'pendiente' || (o.status === 'en_camino' && o.cadeteId === loggedCadete.id)).map(o => (
-                      <div key={o.id} className="border p-3 rounded bg-gray-50 space-y-2.5">
-                        <div className="flex justify-between font-bold border-b pb-1">
-                          <span className="text-red-600">{o.storeName}</span>
-                          <span className="text-green-700">Ganancia Envío: $1200</span>
-                        </div>
-                        <p><strong>Retirar en:</strong> {o.storeAddress}</p>
-                        <p><strong>Cliente:</strong> {o.customerName}</p>
-                        <p><strong>Dirección:</strong> {o.address}</p>
-                        <p className="font-bold text-gray-900 bg-yellow-100 p-1.5 rounded">Cobrar al Cliente in mano: ${o.total}</p>
-
-                        <div className="grid grid-cols-2 gap-2 pt-1">
-                          <a 
-                            href={`https://wa.me/549${o.customerPhone}?text=Hola%20${encodeURIComponent(o.customerName)},%20soy%20el%20cadete%20de%20Catuna%20Pedidos.%20Voy%20en%20camino%20con%20tu%20pedido.`} 
-                            target="_blank" 
-                            className="bg-green-600 text-white py-1.5 px-2 rounded text-center font-bold flex items-center justify-center gap-1">
-                            💬 WhatsApp
-                          </a>
-                          <a 
-                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.address + ', Catuna, La Rioja')}`} 
-                            target="_blank" 
-                            className="bg-blue-600 text-white py-1.5 px-2 rounded text-center font-bold flex items-center justify-center gap-1">
-                            📍 Google Maps
-                          </a>
-                        </div>
-
-                        {o.status === 'pendiente' && (
-                          <button onClick={()=>handleAcceptOrder(o.id)} className="w-full bg-green-700 text-white py-2 rounded font-bold shadow mt-2">
-                            Aceptar Viaje (-${APP_FEE} comisión app)
-                          </button>
-                        )}
-
-                        {o.status === 'en_camino' && (
-                          <button onClick={()=>handleCompleteOrder(o.id)} className="w-full bg-orange-500 text-white py-2 rounded font-bold mt-2">
-                            Marcar Entregado
-                          </button>
-                        )}
+                    {!loggedCadete.isOnline ? (
+                      <div className="bg-yellow-100 border border-yellow-400 text-yellow-800 p-3 rounded text-center font-bold">
+                        Estás desconectado. No verás pedidos nuevos hasta que te pongas en línea.
                       </div>
-                    ))}
+                    ) : (
+                      <>
+                        <h3 className="font-bold text-gray-800 border-b pb-1">Pedidos en Plataforma:</h3>
+                        {orders.filter(o => o.status === 'pendiente' || (o.status === 'en_camino' && o.cadeteId === loggedCadete.id)).map(o => (
+                          <div key={o.id} className="border p-3 rounded bg-gray-50 space-y-2.5">
+                            <div className="flex justify-between font-bold border-b pb-1">
+                              <span className="text-red-600">{o.storeName}</span>
+                              <span className="text-green-700">Ganancia Envío: $1200</span>
+                            </div>
+                            <p><strong>Retirar en:</strong> {o.storeAddress}</p>
+                            <p><strong>Cliente:</strong> {o.customerName}</p>
+                            <p><strong>Dirección:</strong> {o.address}</p>
+                            <p className="font-bold text-gray-900 bg-yellow-100 p-1.5 rounded">Cobrar al Cliente en mano: ${o.total}</p>
+
+                            <div className="grid grid-cols-2 gap-2 pt-1">
+                              <a 
+                                href={`https://wa.me/549${o.customerPhone}?text=Hola%20${encodeURIComponent(o.customerName)},%20soy%20el%20cadete%20de%20Catuna%20Pedidos.%20Voy%20en%20camino%20con%20tu%20pedido.`} 
+                                target="_blank" 
+                                className="bg-green-600 text-white py-1.5 px-2 rounded text-center font-bold flex items-center justify-center gap-1">
+                                💬 WhatsApp
+                              </a>
+                              <a 
+                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.address + ', Catuna, La Rioja')}`} 
+                                target="_blank" 
+                                className="bg-blue-600 text-white py-1.5 px-2 rounded text-center font-bold flex items-center justify-center gap-1">
+                                📍 Google Maps
+                              </a>
+                            </div>
+
+                            {o.status === 'pendiente' && (
+                              <button onClick={()=>handleAcceptOrder(o.id)} className="w-full bg-green-700 text-white py-2 rounded font-bold shadow mt-2">
+                                Aceptar Viaje (-${APP_FEE} comisión app)
+                              </button>
+                            )}
+
+                            {o.status === 'en_camino' && (
+                              <button onClick={()=>handleCompleteOrder(o.id)} className="w-full bg-orange-500 text-white py-2 rounded font-bold mt-2">
+                                Marcar Entregado
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -564,7 +633,7 @@
                       <button type="submit" className="w-full bg-green-700 text-white py-2 rounded font-bold">Cargar Saldo</button>
                     </form>
 
-                    {/* Crear Cadete (teléfono cambiado a text libre) */}
+                    {/* Crear Cadete */}
                     <form onSubmit={handleCreateCadete} className="border p-3 rounded bg-gray-50 space-y-2">
                       <h3 className="font-bold text-gray-800">Registrar Nuevo Cadete</h3>
                       <input required placeholder="Nombre completo" value={newCadeteName} onChange={e=>setNewCadeteName(e.target.value)} className="w-full p-2 border rounded" />
@@ -581,7 +650,7 @@
                       <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold">Crear Cadete</button>
                     </form>
 
-                    {/* Crear Comercio con Datos Bancarios (teléfono cambiado a text libre) */}
+                    {/* Crear Comercio con Datos Bancarios */}
                     <form onSubmit={handleCreateStore} className="border p-3 rounded bg-gray-50 space-y-2">
                       <h3 className="font-bold text-gray-800">Registrar Nuevo Comercio (con datos de pago)</h3>
                       <input required placeholder="Nombre del Negocio" value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} className="w-full p-2 border rounded" />
@@ -591,8 +660,8 @@
                       <input placeholder="Nombre del Titular de la cuenta" value={newStoreTitular} onChange={e=>setNewStoreTitular(e.target.value)} className="w-full p-2 border rounded" />
                       <input required placeholder="Horario (Ej: 20:00 a 00:00 hs)" value={newStoreHours} onChange={e=>newStoreHours(e.target.value)} className="w-full p-2 border rounded" />
                       <div className="grid grid-cols-2 gap-2">
-                        <input required placeholder="Usuario" value={newStoreUser} onChange={e=>newStoreUser(e.target.value)} className="w-full p-2 border rounded" />
-                        <input required placeholder="Contraseña" value={newStorePass} onChange={e=>newStorePass(e.target.value)} className="w-full p-2 border rounded" />
+                        <input required placeholder="Usuario" value={newStoreUser} onChange={e=>setNewStoreUser(e.target.value)} className="w-full p-2 border rounded" />
+                        <input required placeholder="Contraseña" value={newStorePass} onChange={e=>setNewStorePass(e.target.value)} className="w-full p-2 border rounded" />
                       </div>
                       <button type="submit" className="w-full bg-gray-700 text-white py-2 rounded font-bold">Crear Comercio</button>
                     </form>
