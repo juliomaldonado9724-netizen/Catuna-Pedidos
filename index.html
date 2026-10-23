@@ -86,7 +86,7 @@
       const [newStorePhone, setNewStorePhone] = useState('');
       const [newStoreAlias, setNewStoreAlias] = useState('');
       const [newStoreTitular, setNewStoreTitular] = useState('');
-      const [newStoreHours, setNewStoreHours] = useState('20:00 a 00:00 hs');
+      const [newStoreHours, setNewStoreHours] = useState('08:00 a 23:00 hs');
       const [newStoreUser, setNewStoreUser] = useState('');
       const [newStorePass, setNewStorePass] = useState('');
 
@@ -104,10 +104,21 @@
       const [loggedStore, setLoggedStore] = useState(null);
       const [loggedCadete, setLoggedCadete] = useState(null);
 
+      // ESTADOS NUEVO PRODUCTO CON ARCHIVO DE FOTO
       const [prodName, setProdName] = useState('');
       const [prodPrice, setProdPrice] = useState('');
       const [prodDesc, setProdDesc] = useState('');
       const [prodImg, setProdImg] = useState('');
+
+      const handleImageUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setProdImg(reader.result);
+        };
+        reader.readAsDataURL(file);
+      };
 
       const [cart, setCart] = useState([]);
       const [selectedStore, setSelectedStore] = useState(null);
@@ -131,13 +142,13 @@
             phone: newStorePhone,
             alias: newStoreAlias,
             titular: newStoreTitular,
-            hours: newStoreHours || '20:00 a 00:00 hs',
+            hours: newStoreHours || '08:00 a 23:00 hs',
             isOpen: true,
             user: newStoreUser, 
             pass: newStorePass,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
-          setNewStoreName(''); setNewStoreAddress(''); setNewStorePhone(''); setNewStoreAlias(''); setNewStoreTitular(''); setNewStoreHours('20:00 a 00:00 hs'); setNewStoreUser(''); setNewStorePass('');
+          setNewStoreName(''); setNewStoreAddress(''); setNewStorePhone(''); setNewStoreAlias(''); setNewStoreTitular(''); setNewStoreHours('08:00 a 23:00 hs'); setNewStoreUser(''); setNewStorePass('');
           alert("Comercio registrado con éxito en la nube.");
         } catch (err) {
           alert("Error al registrar comercio: " + err.message);
@@ -231,7 +242,7 @@
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
           setProdName(''); setProdPrice(''); setProdDesc(''); setProdImg('');
-          alert("Producto guardado en la nube");
+          alert("Producto guardado en la nube con su foto.");
         } catch (err) {
           alert("Error al guardar producto: " + err.message);
         }
@@ -268,11 +279,11 @@
       const handleAcceptOrder = async (orderId) => {
         if (!loggedCadete) return;
         if (!loggedCadete.isOnline) {
-          alert("Estás desconectado. Debes ponerte en línea para aceptar viajes.");
+          alert("Estás desconectado. Debes ponerte en línea para aceptar envíos.");
           return;
         }
         if ((Number(loggedCadete.balance) || 0) < APP_FEE) {
-          alert(`Saldo insuficiente. Necesitas al menos $${APP_FEE} para tomar un viaje.`);
+          alert(`Saldo insuficiente. Necesitas al menos $${APP_FEE} para tomar un envío.`);
           return;
         }
 
@@ -281,9 +292,9 @@
           await db.collection('cadetes').doc(loggedCadete.id).update({ balance: newBalance });
           await db.collection('orders').doc(orderId).update({ status: 'en_camino', cadeteId: loggedCadete.id });
           setLoggedCadete({ ...loggedCadete, balance: newBalance });
-          alert("¡Viaje aceptado! Se descontaron $" + APP_FEE + " de tu saldo.");
+          alert("¡Envío aceptado! Se descontaron $" + APP_FEE + " de tu saldo.");
         } catch (err) {
-          alert("Error al aceptar viaje: " + err.message);
+          alert("Error al aceptar envío: " + err.message);
         }
       };
 
@@ -298,7 +309,7 @@
 
       const addToCart = (product, store) => {
         if (!store.isOpen) {
-          alert("Este local está cerrado actualmente.");
+          alert("Este negocio está cerrado actualmente.");
           return;
         }
         if (selectedStore && selectedStore.id !== store.id) {
@@ -336,7 +347,7 @@
           });
 
           const itemsList = cart.map(i => `• ${i.quantity}x ${i.name} ($${i.price * i.quantity})`).join('%0A');
-          const msg = `🔔 *NUEVO PEDIDO - Catuna Pedidos*%0A%0A*Cliente:* ${encodeURIComponent(custName)}%0A*Tel:* ${encodeURIComponent(custPhone)}%0A*Dirección:* ${encodeURIComponent(custAddress)}%0A%0A*Productos:*%0A${itemsList}%0A%0A*Subtotal Comida:* $${subtotal}%0A*Envío:* $${DELIVERY_FEE}%0A*TOTAL A PAGAR:* $${subtotal + DELIVERY_FEE}`;
+          const msg = `🔔 *NUEVO PEDIDO - Catuna Pedidos*%0A%0A*Cliente:* ${encodeURIComponent(custName)}%0A*Tel:* ${encodeURIComponent(custPhone)}%0A*Dirección:* ${encodeURIComponent(custAddress)}%0A%0A*Productos:*%0A${itemsList}%0A%0A*Subtotal Productos:* $${subtotal}%0A*Envío:* $${DELIVERY_FEE}%0A*TOTAL A PAGAR:* $${subtotal + DELIVERY_FEE}`;
           
           if (selectedStore.phone) {
             window.open(`https://wa.me/549${selectedStore.phone}?text=${msg}`, '_blank');
@@ -345,7 +356,7 @@
           setLastOrderSent({ storePhone: selectedStore.phone, storeName: selectedStore.name, total: subtotal + DELIVERY_FEE });
           setCart([]);
           setCustName(''); setCustPhone(''); setCustAddress('');
-          alert("¡Pedido enviado con éxito! Se notificó al comercio por WhatsApp.");
+          alert("¡Pedido enviado con éxito! Se notificó al negocio por WhatsApp.");
         } catch (err) {
           alert("Error al enviar pedido: " + err.message);
         }
@@ -408,7 +419,7 @@
 
                       {store.alias && (
                         <div className="bg-amber-50 border border-amber-200 p-2 rounded text-[11px] space-y-0.5">
-                          <p className="font-bold text-amber-900">💳 Datos para transferir la comida:</p>
+                          <p className="font-bold text-amber-900">💳 Datos para transferir la compra:</p>
                           <p className="text-gray-700"><strong>Alias:</strong> <span className="font-mono font-bold select-all">{store.alias}</span></p>
                           {store.titular && <p className="text-gray-700"><strong>Titular:</strong> {store.titular}</p>}
                         </div>
@@ -457,7 +468,7 @@
               <div className="space-y-4">
                 {!loggedStore ? (
                   <form onSubmit={handleStoreLogin} className="border p-4 rounded bg-gray-50 space-y-3 text-xs">
-                    <h2 className="font-bold text-sm text-gray-800">Acceso Comercio</h2>
+                    <h2 className="font-bold text-sm text-gray-800">Acceso Comercio / Negocio</h2>
                     <input required placeholder="Usuario" value={loginUser} onChange={e=>setLoginUser(e.target.value)} className="w-full p-2 border rounded" />
                     <input required type="password" placeholder="Contraseña" value={loginPass} onChange={e=>setLoginPass(e.target.value)} className="w-full p-2 border rounded" />
                     <button type="submit" className="w-full bg-red-600 text-white py-2 rounded font-bold">Entrar</button>
@@ -514,7 +525,7 @@
                                   </a>
                                 </div>
                               ) : (
-                                <p className="text-gray-400 italic text-[11px]">Aún ningún cadete aceptó este viaje.</p>
+                                <p className="text-gray-400 italic text-[11px]">Aún ningún cadete aceptó este envío.</p>
                               )}
                             </div>
                           );
@@ -522,17 +533,23 @@
                       )}
                     </div>
 
-                    <form onSubmit={handleAddProduct} className="border p-3 rounded bg-gray-50 space-y-2">
-                      <h3 className="font-bold text-gray-800">Cargar Producto al Menú</h3>
-                      <input required placeholder="Nombre del plato" value={prodName} onChange={e=>setProdName(e.target.value)} className="w-full p-2 border rounded" />
+                    <form onSubmit={handleAddProduct} className="border p-3 rounded bg-gray-50 space-y-3">
+                      <h3 className="font-bold text-gray-800">Cargar Producto al Catálogo (con foto)</h3>
+                      <input required placeholder="Nombre del producto (Ej: Coca Cola 2.25L, Alfajor, etc.)" value={prodName} onChange={e=>setProdName(e.target.value)} className="w-full p-2 border rounded" />
                       <input required type="number" placeholder="Precio ($)" value={prodPrice} onChange={e=>setProdPrice(e.target.value)} className="w-full p-2 border rounded" />
-                      <input placeholder="Descripción breve" value={prodDesc} onChange={e=>setProdDesc(e.target.value)} className="w-full p-2 border rounded" />
-                      <input placeholder="URL de la Foto (Opcional)" value={prodImg} onChange={e=>setProdImg(e.target.value)} className="w-full p-2 border rounded" />
-                      <button type="submit" className="w-full bg-green-600 text-white py-2 rounded font-bold">Guardar Producto</button>
+                      <input placeholder="Descripción breve (Opcional)" value={prodDesc} onChange={e=>setProdDesc(e.target.value)} className="w-full p-2 border rounded" />
+                      
+                      <div className="bg-white p-2 border rounded space-y-1">
+                        <label className="block text-[11px] font-bold text-gray-700">📷 Saca o selecciona la foto del producto:</label>
+                        <input required type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs file:mr-4 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-red-50 file:text-red-700 hover:file:bg-red-100" />
+                        {prodImg && <p className="text-[10px] text-green-600 font-bold">✅ Foto cargada correctamente</p>}
+                      </div>
+
+                      <button type="submit" className="w-full bg-green-600 text-white py-2 rounded font-bold">Guardar Producto en la Nube</button>
                     </form>
 
                     <div className="space-y-2">
-                      <h3 className="font-bold text-gray-800">Mi Menú Publicado:</h3>
+                      <h3 className="font-bold text-gray-800">Mi Catálogo Publicado:</h3>
                       {products.filter(p => p.storeId === loggedStore.id).map(p => (
                         <div key={p.id} className="flex justify-between items-center border p-2 rounded bg-white">
                           <div className="flex items-center gap-2">
@@ -579,7 +596,7 @@
                     <div className="border p-3 rounded bg-gray-50 flex justify-between items-center">
                       <div>
                         <p className="font-bold text-gray-800">Mi Estado:</p>
-                        <p className="text-gray-500 text-[11px]">Ponte en línea para ver y tomar pedidos.</p>
+                        <p className="text-gray-500 text-[11px]">Ponte en línea para ver y tomar envíos.</p>
                       </div>
                       <button 
                         onClick={toggleCadeteOnlineStatus} 
@@ -598,13 +615,13 @@
 
                     {loggedCadete.isOnline && (Number(loggedCadete.balance) || 0) < APP_FEE && (
                       <div className="bg-red-100 border border-red-400 text-red-800 p-2.5 rounded text-center font-bold">
-                        ⚠️ Saldo insuficiente para recibir viajes. Transfiere al Alias de arriba y avisa al Admin.
+                        ⚠️ Saldo insuficiente para recibir envíos. Transfiere al Alias de arriba y avisa al Admin.
                       </div>
                     )}
 
                     {!loggedCadete.isOnline ? (
                       <div className="bg-yellow-100 border border-yellow-400 text-yellow-800 p-3 rounded text-center font-bold">
-                        Estás desconectado. No verás pedidos nuevos hasta que te pongas en línea.
+                        Estás desconectado. No verás envíos nuevos hasta que te pongas en línea.
                       </div>
                     ) : (
                       <>
@@ -637,7 +654,7 @@
 
                             {o.status === 'pendiente' && (
                               <button onClick={()=>handleAcceptOrder(o.id)} className="w-full bg-green-700 text-white py-2 rounded font-bold shadow mt-2">
-                                Aceptar Viaje (-${APP_FEE} comisión app)
+                                Aceptar Envío (-${APP_FEE} comisión app)
                               </button>
                             )}
 
@@ -722,13 +739,13 @@
                     </form>
 
                     <form onSubmit={handleCreateStore} className="border p-3 rounded bg-gray-50 space-y-2">
-                      <h3 className="font-bold text-gray-800">Registrar Nuevo Comercio (con datos de pago)</h3>
+                      <h3 className="font-bold text-gray-800">Registrar Nuevo Comercio / Kiosco (con datos de pago)</h3>
                       <input required type="text" placeholder="Nombre del Negocio" value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} className="w-full p-2 border rounded" />
                       <input required type="text" placeholder="Dirección del Local" value={newStoreAddress} onChange={e=>setNewStoreAddress(e.target.value)} className="w-full p-2 border rounded" />
                       <input required type="text" placeholder="WhatsApp del local (Ej: 3826123456)" value={newStorePhone} onChange={e=>setNewStorePhone(e.target.value)} className="w-full p-2 border rounded" />
                       <input type="text" placeholder="Alias de Mercado Pago del Local" value={newStoreAlias} onChange={e=>setNewStoreAlias(e.target.value)} className="w-full p-2 border rounded font-mono" />
                       <input type="text" placeholder="Nombre del Titular de la cuenta" value={newStoreTitular} onChange={e=>setNewStoreTitular(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required type="text" placeholder="Horario (Ej: 20:00 a 00:00 hs)" value={newStoreHours} onChange={e=>setNewStoreHours(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required type="text" placeholder="Horario (Ej: 08:00 a 23:00 hs)" value={newStoreHours} onChange={e=>setNewStoreHours(e.target.value)} className="w-full p-2 border rounded" />
                       <input required type="text" placeholder="Usuario para el comercio" value={newStoreUser} onChange={e=>setNewStoreUser(e.target.value)} className="w-full p-2 border rounded" />
                       <input required type="text" placeholder="Contraseña para el comercio" value={newStorePass} onChange={e=>setNewStorePass(e.target.value)} className="w-full p-2 border rounded" />
                       <button type="submit" className="w-full bg-gray-700 text-white py-2 rounded font-bold">Crear Comercio</button>
