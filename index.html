@@ -132,7 +132,7 @@
       const [prodName, setProdName] = useState('');
       const [prodPrice, setProdPrice] = useState('');
       const [prodUnit, setProdUnit] = useState('Unidad');
-      const [prodCategory, setProdCategory] = useState('General'); // NUEVA PROPIEDAD DE CATEGORÍA
+      const [prodCategory, setProdCategory] = useState('General');
       const [prodDesc, setProdDesc] = useState('');
       const [prodImg, setProdImg] = useState('');
       const [isCompressing, setIsCompressing] = useState(false);
@@ -587,7 +587,6 @@
                       return p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q));
                     });
 
-                    // AGRUPAR PRODUCTOS POR CATEGORÍA
                     const categoriesMap = {};
                     storeProducts.forEach(prod => {
                       const cat = prod.category || 'General';
@@ -788,7 +787,15 @@
                               <div className="bg-gray-50 p-2 rounded text-[11px] border">
                                 <p className="font-bold text-gray-700">Detalle del Pedido:</p>
                                 {o.items && o.items.map((i, idx) => (
-                                  <p key={idx} className="text-gray-600">• {i.quantity} {i.unit || 'Unid.'} x {i.name} (${Math.round(i.price * i.quantity)})</p>
+                                  <div key={idx} className="flex justify-between items-center py-1 border-b last:border-b-0">
+                                    <span className="text-gray-600">• {i.quantity} {i.unit || 'Unid.'} x {i.name} (${Math.round(i.price * i.quantity)})</span>
+                                    <a 
+                                      href={`https://wa.me/549${o.customerPhone}?text=Hola%20${encodeURIComponent(o.customerName)},%20te%20escribo%20de%20${encodeURIComponent(loggedStore.name)}%20por%20tu%20pedido.%20Lamentablemente%20nos%20quedamos%20sin%20stock%20de%20"${encodeURIComponent(i.name)}".%20¿Te%20lo%20podemos%20reemplazar%20por%20otra%20cosa%20o%20lo%20anulamos?`}
+                                      target="_blank"
+                                      className="bg-red-500 text-white font-bold px-2 py-0.5 rounded text-[10px] shadow hover:bg-red-600">
+                                      ❌ Avisar Falta Stock
+                                    </a>
+                                  </div>
                                 ))}
                               </div>
 
