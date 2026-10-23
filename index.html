@@ -49,7 +49,7 @@
 
       const STORE_COMMISSION_PERCENT = 0.10; 
       const APP_FEE = 300; 
-      const DELIVERY_FEE = 1500; 
+      const BASE_DELIVERY_FEE = 1500; // Tarifa base de envío
 
       const [stores, setStores] = useState([]);
       const [products, setProducts] = useState([]);
@@ -60,7 +60,7 @@
       const [searchTerm, setSearchTerm] = useState('');
       const [orderPrepTimes, setOrderPrepTimes] = useState({});
       const [currentTime, setCurrentTime] = useState(Date.now());
-      const [isCartOpen, setIsCartOpen] = useState(false); // NUEVO: MODAL/VISTA DEL CARRITO DETALLADO
+      const [isCartOpen, setIsCartOpen] = useState(false);
 
       useEffect(() => {
         const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
@@ -198,7 +198,6 @@
       };
 
       const [cart, setCart] = useState([]);
-      const [selectedStore, setSelectedStore] = useState(null);
       const [custName, setCustName] = useState('');
       const [custPhone, setCustPhone] = useState('');
       const [custAddress, setCustAddress] = useState('');
@@ -337,7 +336,10 @@
         if (confirm("¿Confirmas que abonaste la comisión acumulada? Esto pondrá tu saldo deudor en $0.")) {
           try {
             const batch = db.batch();
-            const storeOrders = orders.filter(o => o.storeId === storeId && o.status === 'entregado' && !o.storeSettled);
+            const storeOrders = orders.filter(o => {
+              const hasStore = o.storeId === storeId || (o.storesInvolved && o.storesInvolved.includes(storeId));
+              return hasStore && o.status === 'entregado' && !o.storeSettled;
+            });
             storeOrders.forEach(o => {
               const ref = db.collection('orders').doc(o.id);
               batch.update(ref, { storeSettled: true });
@@ -503,6 +505,7 @@
         }
       };
 
+      // PERMITIR AGREGAR PRODUCTOS DE CUALQUIER LOCAL AL CARRITO MULTI-LOCAL
       const addToCart = (product, store) => {
         const onlineCadetesCount = cadetes.filter(c => c.isOnline && !c.isSuspended).length;
         if (onlineCadetesCount === 0) {
@@ -514,10 +517,6 @@
           alert("Este negocio no está disponible actualmente.");
           return;
         }
-        if (selectedStore && selectedStore.id !== store.id) {
-          if (!confirm("Solo puedes pedir a un negocio a la vez. ¿Deseas reiniciar el carrito?")) return;
-          setCart([]);
-        }
 
         const qtyToAdd = Number(selectedQtyMap[product.id]) || 1;
         if (qtyToAdd <= 0) {
@@ -525,22 +524,19 @@
           return;
         }
 
-        setSelectedStore(store);
         const exists = cart.find(i => i.id === product.id);
         if (exists) {
           setCart(cart.map(i => i.id === product.id ? { ...i, quantity: i.quantity + qtyToAdd } : i));
         } else {
-          setCart([...cart, { ...product, quantity: qtyToAdd }]);
+          setCart([...cart, { ...product, storeId: store.id, storeName: store.name, storeAddress: store.address, storePhone: store.phone, quantity: qtyToAdd }]);
         }
-        setIsCartOpen(true); // Abrir automáticamente el modal del carrito para que el cliente confirme visualmente
+        setIsCartOpen(true);
       };
 
-      // FUNCIONES DE GESTIÓN DEL CARRITO DETALLADO
       const updateCartItemQuantity = (productId, newQty) => {
         const qty = Number(newQty);
         if (qty <= 0) {
           setCart(cart.filter(item => item.id !== productId));
-          if (cart.length <= 1) setSelectedStore(null);
         } else {
           setCart(cart.map(item => item.id === productId ? { ...item, quantity: qty } : item));
         }
@@ -549,21 +545,42 @@
       const handleCreateOrder = async (e) => {
         e.preventDefault();
         if (cart.length === 0) return;
+        
+        // Agrupar comercios involucrados y calcular costos
+        const uniqueStoresMap = {};
+        cart.forEach(item => {
+          if (!uniqueStoresMap[item.storeId]) {
+            uniqueStoresMap[item.storeId] = {
+              storeId: item.storeId,
+              storeName: item.storeName,
+              storeAddress: item.storeAddress,
+              storePhone: item.storePhone,
+              items: []
+            };
+          }
+          uniqueStoresMap[item.storeId].items.push(item);
+        });
+
+        const storesList = Object.values(uniqueStoresMap);
+        const storesInvolvedIds = storesList.map(s => s.storeId);
+        
+        // Si hay más de 1 local, sumamos un plus de $500 por cada parada extra al envío
+        const extraStopsCount = Math.max(0, storesList.length - 1);
+        const totalDeliveryFee = BASE_DELIVERY_FEE + (extraStopsCount * 500);
         const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
         
         try {
+          // Registrar el pedido global en la base de datos
           await db.collection('orders').add({
-            storeId: selectedStore.id,
-            storeName: selectedStore.name,
-            storeAddress: selectedStore.address,
-            storePhone: selectedStore.phone,
+            storesInvolved: storesInvolvedIds,
+            storesList: storesList,
             customerName: custName,
             customerPhone: custPhone,
             address: custAddress,
             items: cart,
-            deliveryFee: DELIVERY_FEE,
+            deliveryFee: totalDeliveryFee,
             subtotal,
-            total: subtotal + DELIVERY_FEE,
+            total: subtotal + totalDeliveryFee,
             status: 'pendiente',
             cadeteId: null,
             storeSettled: false,
@@ -571,19 +588,22 @@
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
 
-          const itemsList = cart.map(i => `• ${i.quantity} ${i.unit || 'Unid.'} x ${i.name} ($${Math.round(i.price * i.quantity)})`).join('%0A');
-          const msg = `🔔 *NUEVO PEDIDO - Catuna Pedidos*%0A%0A*Cliente:* ${encodeURIComponent(custName)}%0A*Tel:* ${encodeURIComponent(custPhone)}%0A*Dirección:* ${encodeURIComponent(custAddress)}%0A%0A*Productos:*%0A${itemsList}%0A%0A*Subtotal Productos:* $${Math.round(subtotal)}%0A*Envío:* $${DELIVERY_FEE}%0A*TOTAL A PAGAR:* $${Math.round(subtotal + DELIVERY_FEE)}`;
-          
-          if (selectedStore.phone) {
-            window.open(`https://wa.me/549${selectedStore.phone}?text=${msg}`, '_blank');
-          }
+          // Notificar por WhatsApp a cada local involucrado con su parte del pedido
+          storesList.forEach(store => {
+            const storeItemsList = store.items.map(i => `• ${i.quantity} ${i.unit || 'Unid.'} x ${i.name} ($${Math.round(i.price * i.quantity)})`).join('%0A');
+            const storeSubtotal = store.items.reduce((s, i) => s + (i.price * i.quantity), 0);
+            const msg = `🔔 *NUEVO PEDIDO MULTI-LOCAL - Catuna Pedidos*%0A%0A*Cliente:* ${encodeURIComponent(custName)}%0A*Tel:* ${encodeURIComponent(custPhone)}%0A*Dirección:* ${encodeURIComponent(custAddress)}%0A%0A*Tus productos en este pedido:*%0A${storeItemsList}%0A%0A*Subtotal a cobrar:* $${Math.round(storeSubtotal)}`;
+            
+            if (store.storePhone) {
+              window.open(`https://wa.me/549${store.storePhone}?text=${msg}`, '_blank');
+            }
+          });
 
-          setLastOrderSent({ storePhone: selectedStore.phone, storeName: selectedStore.name, total: Math.round(subtotal + DELIVERY_FEE) });
+          setLastOrderSent({ storeName: storesList.map(s => s.name).join(', '), total: Math.round(subtotal + totalDeliveryFee) });
           setCart([]);
-          setSelectedStore(null);
           setIsCartOpen(false);
           setCustName(''); setCustPhone(''); setCustAddress('');
-          alert("¡Pedido enviado con éxito! Se notificó al negocio por WhatsApp.");
+          alert("¡Pedido multi-local enviado con éxito! Se notificó a los comercios por WhatsApp.");
         } catch (err) {
           alert("Error al enviar pedido: " + err.message);
         }
@@ -628,13 +648,17 @@
 
       const totalCartItemsCount = cart.reduce((sum, item) => sum + Number(item.quantity), 0);
       const cartSubtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      
+      // Calcular cantidad de locales únicos en el carrito actual
+      const uniqueStoresInCart = [...new Set(cart.map(i => i.storeId))].length;
+      const calculatedDeliveryFee = BASE_DELIVERY_FEE + (Math.max(0, uniqueStoresInCart - 1) * 500);
 
       return (
         <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl relative pb-24">
           <header className="bg-red-600 text-white p-4 sticky top-0 z-50 flex justify-between items-center shadow">
             <div>
               <h1 className="text-xl font-bold">Catuna Pedidos</h1>
-              <p className="text-xs text-red-100">Delivery Local (En Vivo)</p>
+              <p className="text-xs text-red-100">Delivery Local (Multi-Local)</p>
             </div>
             <span className="text-xs bg-red-700 px-2 py-1 rounded font-bold uppercase">{currentTab}</span>
           </header>
@@ -667,14 +691,8 @@
 
                 {lastOrderSent && (
                   <div className="bg-green-50 border-2 border-green-500 p-3 rounded-lg text-center space-y-2 shadow-md">
-                    <p className="font-bold text-green-900 text-sm">✅ ¡Pedido realizado a {lastOrderSent.storeName}!</p>
-                    <p className="text-xs text-gray-600">Si pagaste por transferencia, toca el botón para enviar el comprobante directamente al WhatsApp del local.</p>
-                    <a 
-                      href={`https://wa.me/549${lastOrderSent.storePhone}?text=Hola,%20te%20envío%20el%20comprobante%20de%20mi%20pedido%20por%20$${lastOrderSent.total}%20en%20Catuna%20Pedidos:`}
-                      target="_blank"
-                      className="block w-full bg-green-600 text-white font-bold py-2 rounded text-xs shadow hover:bg-green-700">
-                      💬 Enviar Comprobante por WhatsApp
-                    </a>
+                    <p className="font-bold text-green-900 text-sm">✅ ¡Pedido multi-local realizado con éxito!</p>
+                    <p className="text-xs text-gray-600">Se notificó a los comercios involucrados por WhatsApp.</p>
                     <button onClick={() => setLastOrderSent(null)} className="text-[11px] text-gray-500 underline">Cerrar aviso</button>
                   </div>
                 )}
@@ -684,7 +702,6 @@
                     <h2 className="font-extrabold text-red-700 text-sm flex items-center gap-1.5">
                       🔥 ¡Promociones y Ofertas del Día! 🔥
                     </h2>
-                    <p className="text-[11px] text-gray-600">Aprovecha antes de que finalice el contador:</p>
                     
                     <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
                       {promoProducts.map(prod => {
@@ -835,7 +852,7 @@
                                           onClick={() => addToCart(prod, store)} 
                                           disabled={!store.isOpen || onlineCadetesCount === 0}
                                           className={`text-xs px-2.5 py-1 rounded font-bold ${store.isOpen && onlineCadetesCount > 0 ? 'bg-red-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>
-                                          {store.isOpen && onlineCadetesCount > 0 ? '+ Pedir' : 'No disponible'}
+                                          {store.isOpen && onlineCadetesCount > 0 ? '+ Agregar' : 'No disponible'}
                                         </button>
                                       </div>
                                     </div>
@@ -850,40 +867,39 @@
                   })
                 )}
 
-                {/* BOTÓN FLOTANTE INFERIOR DEL CARRITO */}
+                {/* BOTÓN FLOTANTE INFERIOR DEL CARRITO MULTI-LOCAL */}
                 {cart.length > 0 && (
                   <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-gray-900 text-white p-3 shadow-2xl z-50 flex justify-between items-center border-t-2 border-red-500">
                     <div>
-                      <p className="text-[10px] text-gray-300">Comercio: <strong className="text-white">{selectedStore?.name}</strong></p>
-                      <p className="text-xs font-bold">🛒 {totalCartItemsCount} ítems | Subtotal: ${Math.round(cartSubtotal)}</p>
+                      <p className="text-[10px] text-gray-300">🛒 {uniqueStoresInCart} {uniqueStoresInCart === 1 ? 'comercio' : 'comercios'} en tu carrito</p>
+                      <p className="text-xs font-bold">{totalCartItemsCount} ítems | Subtotal: ${Math.round(cartSubtotal)}</p>
                     </div>
                     <button 
                       onClick={() => setIsCartOpen(true)}
                       className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-bold text-xs shadow animate-pulse">
-                      Ver Carrito y Pedir ➔
+                      Ver Carrito Multi-Local ➔
                     </button>
                   </div>
                 )}
 
-                {/* MODAL / PANTALLA DETALLADA DEL CARRITO */}
+                {/* MODAL / PANTALLA DETALLADA DEL CARRITO MULTI-LOCAL */}
                 {isCartOpen && (
                   <div className="fixed inset-0 bg-black/60 z-50 flex flex-col justify-end max-w-md mx-auto">
-                    <div className="bg-white rounded-t-2xl p-4 space-y-3 max-h-[85vh] overflow-y-auto shadow-2xl animate-slide-up">
+                    <div className="bg-white rounded-t-2xl p-4 space-y-3 max-h-[85vh] overflow-y-auto shadow-2xl">
                       <div className="flex justify-between items-center border-b pb-2">
                         <div>
-                          <h3 className="font-extrabold text-sm text-gray-900">🛒 Tu Carrito de Compras</h3>
-                          <p className="text-[11px] text-gray-500">Negocio: <strong>{selectedStore?.name}</strong></p>
+                          <h3 className="font-extrabold text-sm text-gray-900">🛒 Carrito de Compras (Multi-Local)</h3>
+                          <p className="text-[11px] text-gray-500">Puedes pedir a varios negocios en una sola salida.</p>
                         </div>
                         <button onClick={() => setIsCartOpen(false)} className="text-gray-400 font-bold text-sm p-1 hover:text-gray-600">✕</button>
                       </div>
 
-                      {/* LISTA DETALLADA DE PRODUCTOS CON CONTROL DE CANTIDAD */}
-                      <div className="space-y-2 max-h-48 overflow-y-auto bg-gray-50 p-2 rounded-lg border">
+                      <div className="space-y-3 max-h-52 overflow-y-auto bg-gray-50 p-2 rounded-lg border">
                         {cart.map((item, idx) => (
                           <div key={idx} className="flex justify-between items-center bg-white p-2 rounded border text-xs shadow-sm">
                             <div className="flex-1 pr-2">
                               <p className="font-bold text-gray-800">{item.name}</p>
-                              <p className="text-[10px] text-gray-500">${item.price} c/u ({item.unit || 'Unid.'})</p>
+                              <p className="text-[10px] text-red-600 font-bold">🏪 {item.storeName}</p>
                             </div>
                             <div className="flex items-center gap-2">
                               <input 
@@ -901,23 +917,21 @@
                         ))}
                       </div>
 
-                      {/* DESGLOSE DE TOTALES */}
                       <div className="bg-gray-100 p-2.5 rounded-lg text-xs space-y-1">
                         <div className="flex justify-between text-gray-600">
                           <span>Subtotal Productos:</span>
                           <span className="font-bold">${Math.round(cartSubtotal)}</span>
                         </div>
                         <div className="flex justify-between text-gray-600">
-                          <span>Costo de Envíos (Cadete):</span>
-                          <span className="font-bold">${DELIVERY_FEE}</span>
+                          <span>Costo de Envío ({uniqueStoresInCart} {uniqueStoresInCart === 1 ? 'parada' : 'paradas'}):</span>
+                          <span className="font-bold">${calculatedDeliveryFee}</span>
                         </div>
                         <div className="flex justify-between text-gray-900 font-extrabold text-sm pt-1 border-t border-gray-300">
                           <span>TOTAL A PAGAR:</span>
-                          <span className="text-red-600">${Math.round(cartSubtotal + DELIVERY_FEE)}</span>
+                          <span className="text-red-600">${Math.round(cartSubtotal + calculatedDeliveryFee)}</span>
                         </div>
                       </div>
 
-                      {/* FORMULARIO DE DATOS DE ENVÍO */}
                       <form onSubmit={handleCreateOrder} className="space-y-2 pt-1">
                         <p className="text-xs font-bold text-gray-800">Datos para la entrega:</p>
                         <input required placeholder="Tu Nombre Completo" value={custName} onChange={e=>setCustName(e.target.value)} className="w-full text-xs p-2 border rounded" />
@@ -961,8 +975,21 @@
                     </div>
 
                     {(() => {
-                      const storeOrders = orders.filter(o => o.storeId === loggedStore.id && o.status === 'entregado' && !o.storeSettled);
-                      const totalSales = storeOrders.reduce((sum, o) => sum + o.subtotal, 0);
+                      const storeOrders = orders.filter(o => {
+                        const hasStore = o.storeId === loggedStore.id || (o.storesInvolved && o.storesInvolved.includes(loggedStore.id));
+                        return hasStore && o.status === 'entregado' && !o.storeSettled;
+                      });
+                      
+                      const totalSales = storeOrders.reduce((sum, o) => {
+                        if (o.storesList) {
+                          const myStorePart = o.storesList.find(s => s.storeId === loggedStore.id);
+                          if (myStorePart) {
+                            return sum + myStorePart.items.reduce((s, i) => s + (i.price * i.quantity), 0);
+                          }
+                        }
+                        return sum + (o.subtotal || 0);
+                      }, 0);
+
                       const commissionDue = Math.round(totalSales * STORE_COMMISSION_PERCENT);
                       const storeNetProfit = Math.round(totalSales - commissionDue);
 
@@ -1011,11 +1038,21 @@
 
                     <div className="space-y-2">
                       <h3 className="font-bold text-gray-800 border-b pb-1">Pedidos de mis Clientes:</h3>
-                      {orders.filter(o => o.storeId === loggedStore.id && o.status !== 'entregado' && o.status !== 'cancelado_por_tiempo').length === 0 ? (
+                      {orders.filter(o => {
+                        const hasStore = o.storeId === loggedStore.id || (o.storesInvolved && o.storesInvolved.includes(loggedStore.id));
+                        return hasStore && o.status !== 'entregado' && o.status !== 'cancelado_por_tiempo';
+                      }).length === 0 ? (
                         <p className="text-gray-500 text-center py-2">No hay pedidos activos en este momento.</p>
                       ) : (
-                        orders.filter(o => o.storeId === loggedStore.id && o.status !== 'entregado' && o.status !== 'cancelado_por_tiempo').map(o => {
+                        orders.filter(o => {
+                          const hasStore = o.storeId === loggedStore.id || (o.storesInvolved && o.storesInvolved.includes(loggedStore.id));
+                          return hasStore && o.status !== 'entregado' && o.status !== 'cancelado_por_tiempo';
+                        }).map(o => {
                           const assignedCadete = cadetes.find(c => c.id === o.cadeteId);
+                          // Filtrar ítems que corresponden a este local específico
+                          const myItems = o.storesList ? (o.storesList.find(s => s.storeId === loggedStore.id)?.items || []) : (o.items || []);
+                          const mySubtotal = myItems.reduce((s, i) => s + (i.price * i.quantity), 0);
+
                           return (
                             <div key={o.id} className="border p-3 rounded bg-white shadow-sm space-y-2">
                               <div className="flex justify-between font-bold">
@@ -1027,21 +1064,15 @@
                               <p className="text-gray-600"><strong>Dirección:</strong> {o.address}</p>
                               
                               <div className="bg-gray-50 p-2 rounded text-[11px] border">
-                                <p className="font-bold text-gray-700">Detalle del Pedido:</p>
-                                {o.items && o.items.map((i, idx) => (
+                                <p className="font-bold text-gray-700">Tus productos en este pedido:</p>
+                                {myItems.map((i, idx) => (
                                   <div key={idx} className="flex justify-between items-center py-1 border-b last:border-b-0">
                                     <span className="text-gray-600">• {i.quantity} {i.unit || 'Unid.'} x {i.name} (${Math.round(i.price * i.quantity)})</span>
-                                    <a 
-                                      href={`https://wa.me/549${o.customerPhone}?text=Hola%20${encodeURIComponent(o.customerName)},%20te%20escribo%20de%20${encodeURIComponent(loggedStore.name)}%20por%20tu%20pedido.%20Lamentablemente%20nos%20quedamos%20sin%20stock%20de%20"${encodeURIComponent(i.name)}".%20¿Te%20lo%20podemos%20reemplazar%20por%20otra%20cosa%20o%20lo%20anulamos?`}
-                                      target="_blank"
-                                      className="bg-red-500 text-white font-bold px-2 py-0.5 rounded text-[10px] shadow hover:bg-red-600">
-                                      ❌ Avisar Falta Stock
-                                    </a>
                                   </div>
                                 ))}
                               </div>
 
-                              <p className="text-gray-800 font-bold">Total a cobrar: ${Math.round(o.total)}</p>
+                              <p className="text-gray-800 font-bold">Subtotal a cobrar al cliente/cadete: ${Math.round(mySubtotal)}</p>
 
                               <div className="bg-yellow-50 border border-yellow-200 p-2 rounded space-y-1.5">
                                 <p className="font-bold text-yellow-900 text-[11px]">⏱️ Tiempo estimado de preparación:</p>
@@ -1064,14 +1095,13 @@
                                     Guardar y Avisar
                                   </button>
                                 </div>
-                                <p className="text-[10px] text-gray-500">Actual: <strong>{o.prepTime || 'Por calcular'}</strong></p>
                               </div>
 
                               {assignedCadete ? (
                                 <div className="bg-blue-50 border border-blue-200 p-2 rounded space-y-2 mt-2">
                                   <p className="text-blue-900 font-bold">Cadete asignado: {assignedCadete.name} ({assignedCadete.vehicle})</p>
                                   <a 
-                                    href={`https://wa.me/549${assignedCadete.phone}?text=Hola%20${encodeURIComponent(assignedCadete.name)},%20el%20pedido%20de%20${encodeURIComponent(o.customerName)}%20ya%20está%20listo%20en%20el%20local%20para%20que%20lo%20pases%20a%20retirar.%20Dirección%20de%20entrega:%20${encodeURIComponent(o.address)}`}
+                                    href={`https://wa.me/549${assignedCadete.phone}?text=Hola%20${encodeURIComponent(assignedCadete.name)},%20el%20pedido%20de%20${encodeURIComponent(o.customerName)}%20ya%20está%20listo%20en%20el%20local%20para%20que%20lo%20pases%20a%20retirar.`}
                                     target="_blank"
                                     className="block w-full bg-green-600 text-white text-center font-bold py-1.5 rounded shadow hover:bg-green-700">
                                     💬 Avisar al Cadete que está listo
@@ -1088,28 +1118,39 @@
 
                     <div className="border p-3 rounded bg-gray-50 space-y-2 mt-4">
                       <h3 className="font-bold text-gray-800 border-b pb-1">📜 Historial de Ventas Entregadas:</h3>
-                      {orders.filter(o => o.storeId === loggedStore.id && o.status === 'entregado').length === 0 ? (
+                      {orders.filter(o => {
+                        const hasStore = o.storeId === loggedStore.id || (o.storesInvolved && o.storesInvolved.includes(loggedStore.id));
+                        return hasStore && o.status === 'entregado';
+                      }).length === 0 ? (
                         <p className="text-gray-400 text-center italic py-2">No hay ventas registradas en el historial todavía.</p>
                       ) : (
-                        orders.filter(o => o.storeId === loggedStore.id && o.status === 'entregado').map(o => (
-                          <div key={o.id} className="bg-white p-2.5 rounded border space-y-1">
-                            <div className="flex justify-between font-bold text-xs text-gray-800">
-                              <span>Cliente: {o.customerName}</span>
-                              <span className="text-green-700">${Math.round(o.total)}</span>
+                        orders.filter(o => {
+                          const hasStore = o.storeId === loggedStore.id || (o.storesInvolved && o.storesInvolved.includes(loggedStore.id));
+                          return hasStore && o.status === 'entregado';
+                        }).map(o => {
+                          const myItems = o.storesList ? (o.storesList.find(s => s.storeId === loggedStore.id)?.items || []) : (o.items || []);
+                          const mySubtotal = myItems.reduce((s, i) => s + (i.price * i.quantity), 0);
+
+                          return (
+                            <div key={o.id} className="bg-white p-2.5 rounded border space-y-1">
+                              <div className="flex justify-between font-bold text-xs text-gray-800">
+                                <span>Cliente: {o.customerName}</span>
+                                <span className="text-green-700">${Math.round(mySubtotal)}</span>
+                              </div>
+                              <p className="text-[10px] text-gray-500">Dirección: {o.address}</p>
+                              <div className="text-[10px] bg-gray-50 p-1.5 rounded border space-y-0.5">
+                                {myItems.map((i, idx) => (
+                                  <p key={idx} className="text-gray-600">▪️ {i.quantity} {i.unit || 'Unid.'} x {i.name} (${Math.round(i.price * i.quantity)})</p>
+                                ))}
+                              </div>
                             </div>
-                            <p className="text-[10px] text-gray-500">Dirección: {o.address}</p>
-                            <div className="text-[10px] bg-gray-50 p-1.5 rounded border space-y-0.5">
-                              {o.items && o.items.map((i, idx) => (
-                                <p key={idx} className="text-gray-600">▪️ {i.quantity} {i.unit || 'Unid.'} x {i.name} (${Math.round(i.price * i.quantity)})</p>
-                              ))}
-                            </div>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
 
                     <form onSubmit={handleAddProduct} className="border p-3 rounded bg-gray-50 space-y-3">
-                      <h3 className="font-bold text-gray-800">Cargar Producto al Catálogo (con foto, categoría y promo con tiempo)</h3>
+                      <h3 className="font-bold text-gray-800">Cargar Producto al Catálogo (con foto y categoría)</h3>
                       <input required placeholder="Nombre del producto (Ej: Bife de chorizo, Coca 2L)" value={prodName} onChange={e=>setProdName(e.target.value)} className="w-full p-2 border rounded" />
                       
                       <div className="grid grid-cols-2 gap-2">
@@ -1157,7 +1198,7 @@
 
                         {prodIsPromo && (
                           <div>
-                            <label className="block text-[10px] font-bold text-gray-700 mb-1">Duración de la promoción (¿Cuánto tiempo estará activa?):</label>
+                            <label className="block text-[10px] font-bold text-gray-700 mb-1">Duración de la promoción:</label>
                             <select value={prodPromoHours} onChange={e=>setProdPromoHours(e.target.value)} className="w-full p-1.5 border rounded bg-white text-xs font-bold text-red-600">
                               <option value="6">6 horas</option>
                               <option value="12">12 horas</option>
@@ -1248,12 +1289,11 @@
                       <p className="text-gray-700"><strong>Banco:</strong> {ADMIN_PAYMENT_INFO.banco}</p>
                       <p className="text-gray-700"><strong>Alias:</strong> <span className="bg-white px-1.5 py-0.5 border rounded font-mono font-bold select-all">{ADMIN_PAYMENT_INFO.alias}</span></p>
                       <p className="text-gray-700"><strong>Titular:</strong> {ADMIN_PAYMENT_INFO.titular}</p>
-                      <p className="text-gray-500 text-[11px] pt-1">* Realiza la transferencia y avísale al Admin para que te acredite el saldo.</p>
                     </div>
 
                     {loggedCadete.isOnline && (Number(loggedCadete.balance) || 0) < APP_FEE && (
                       <div className="bg-red-100 border border-red-400 text-red-800 p-2.5 rounded text-center font-bold">
-                        ⚠️ Saldo insuficiente para recibir envíos. Transfiere al Alias de arriba y avisa al Admin.
+                        ⚠️ Saldo insuficiente para recibir envíos. Transfiere al Alias y avisa al Admin.
                       </div>
                     )}
 
@@ -1267,17 +1307,27 @@
                         {orders.filter(o => o.status === 'pendiente' || (o.status === 'en_camino' && o.cadeteId === loggedCadete.id)).map(o => (
                           <div key={o.id} className="border p-3 rounded bg-gray-50 space-y-2.5">
                             <div className="flex justify-between font-bold border-b pb-1">
-                              <span className="text-red-600">{o.storeName}</span>
-                              <span className="text-green-700">Ganancia Envío: $1200</span>
+                              <span className="text-red-600">Pedido Multi-Local</span>
+                              <span className="text-green-700">Ganancia Envío: ${Math.round(o.deliveryFee)}</span>
                             </div>
-                            <p><strong>Retirar en:</strong> {o.storeAddress}</p>
+                            
+                            {/* MOSTRAR RUTA DE RETIROS PASO A PASO */}
+                            <div className="bg-amber-50 border border-amber-200 p-2 rounded space-y-1">
+                              <p className="font-bold text-amber-900">📍 Ruta de Retiros:</p>
+                              {o.storesList ? o.storesList.map((s, sIdx) => (
+                                <p key={sIdx} className="text-gray-700 text-[11px]">
+                                  <strong>Parada {sIdx + 1}:</strong> {s.name} ({s.address})
+                                </p>
+                              )) : <p>Retirar en: {o.storeAddress}</p>}
+                            </div>
+
                             <p><strong>Cliente:</strong> {o.customerName}</p>
-                            <p><strong>Dirección:</strong> {o.address}</p>
+                            <p><strong>Dirección de Entrega:</strong> {o.address}</p>
                             
                             <div className="bg-white p-2 rounded text-[11px] border">
-                              <p className="font-bold text-gray-700">Detalle a trasladar:</p>
+                              <p className="font-bold text-gray-700">Detalle completo a trasladar:</p>
                               {o.items && o.items.map((i, idx) => (
-                                <p key={idx} className="text-gray-600">• {i.quantity} {i.unit || 'Unid.'} x {i.name}</p>
+                                <p key={idx} className="text-gray-600">• {i.quantity} {i.unit || 'Unid.'} x {i.name} <span className="text-red-600 font-bold">({i.storeName})</span></p>
                               ))}
                             </div>
 
@@ -1327,15 +1377,10 @@
                         orders.filter(o => o.cadeteId === loggedCadete.id && o.status === 'entregado').map(o => (
                           <div key={o.id} className="bg-white p-2.5 rounded border space-y-1">
                             <div className="flex justify-between font-bold text-xs text-gray-800">
-                              <span>Local: {o.storeName}</span>
+                              <span>Multi-Local</span>
                               <span className="text-blue-700">Cobrado: ${Math.round(o.total)}</span>
                             </div>
                             <p className="text-[10px] text-gray-600">Cliente: {o.customerName} ({o.address})</p>
-                            <div className="text-[10px] bg-gray-50 p-1.5 rounded border space-y-0.5">
-                              {o.items && o.items.map((i, idx) => (
-                                <p key={idx} className="text-gray-600">▪️ {i.quantity} {i.unit || 'Unid.'} x {i.name}</p>
-                              ))}
-                            </div>
                           </div>
                         ))
                       )}
@@ -1392,7 +1437,7 @@
                     <form onSubmit={handlePublishAnnouncement} className="border p-3 rounded bg-amber-50 border-amber-300 space-y-2">
                       <h3 className="font-bold text-amber-900 text-sm">📢 Anuncio Global para Clientes</h3>
                       <input 
-                        placeholder="Ej: ¡Hoy horario especial por feriado! / 10% off en todos los kioscos" 
+                        placeholder="Ej: ¡Hoy horario especial por feriado!" 
                         value={announcementInput} 
                         onChange={e=>setAnnouncementInput(e.target.value)} 
                         className="w-full p-2 border rounded bg-white" 
@@ -1414,8 +1459,19 @@
                       <h3 className="font-bold text-orange-900 text-sm">📊 Rendición de Comisiones (10%)</h3>
                       {stores.length === 0 ? <p className="text-gray-500">No hay comercios cargados.</p> : null}
                       {stores.map(store => {
-                        const storeOrders = orders.filter(o => o.storeId === store.id && o.status === 'entregado' && !o.storeSettled);
-                        const totalSales = storeOrders.reduce((sum, o) => sum + o.subtotal, 0);
+                        const storeOrders = orders.filter(o => {
+                          const hasStore = o.storeId === store.id || (o.storesInvolved && o.storesInvolved.includes(store.id));
+                          return hasStore && o.status === 'entregado' && !o.storeSettled;
+                        });
+                        
+                        const totalSales = storeOrders.reduce((sum, o) => {
+                          if (o.storesList) {
+                            const myStorePart = o.storesList.find(s => s.storeId === store.id);
+                            if (myStorePart) return sum + myStorePart.items.reduce((s, i) => s + (i.price * i.quantity), 0);
+                          }
+                          return sum + (o.subtotal || 0);
+                        }, 0);
+
                         const commissionDue = Math.round(totalSales * STORE_COMMISSION_PERCENT);
 
                         return (
@@ -1437,65 +1493,49 @@
                     </div>
 
                     <div className="border p-3 rounded bg-gray-50 space-y-2">
-                      <h3 className="font-bold text-gray-800 text-sm">🏪 Comercios Registrados (Control y Suspensión)</h3>
-                      {stores.length === 0 ? (
-                        <p className="text-gray-500">No hay comercios registrados actualmente.</p>
-                      ) : (
-                        stores.map(store => (
-                          <div key={store.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
-                            <div>
-                              <p className="font-bold text-gray-800">
-                                {store.name} 
-                                {store.isSuspended && <span className="text-red-600 ml-1 text-[10px] bg-red-100 px-1 rounded font-bold">⚠️ SUSPENDIDO</span>}
-                              </p>
-                              <p className="text-gray-500 text-[11px]">{store.address} - Tel: {store.phone}</p>
-                            </div>
-                            <div className="flex gap-1">
-                              <button 
-                                onClick={() => handleToggleStoreSuspension(store.id, store.isSuspended)}
-                                className={`font-bold px-2 py-1.5 rounded text-[10px] shadow text-white ${store.isSuspended ? 'bg-green-600 hover:bg-green-700' : 'bg-yellow-600 hover:bg-yellow-700'}`}>
-                                {store.isSuspended ? 'Habilitar' : 'Suspender'}
-                              </button>
-                              <button 
-                                onClick={() => handleDeleteStore(store.id, store.name)}
-                                className="bg-red-600 text-white font-bold px-2 py-1.5 rounded text-[10px] shadow hover:bg-red-700">
-                                🗑️
-                              </button>
-                            </div>
+                      <h3 className="font-bold text-gray-800 text-sm">🏪 Comercios Registrados</h3>
+                      {stores.map(store => (
+                        <div key={store.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
+                          <div>
+                            <p className="font-bold text-gray-800">
+                              {store.name} 
+                              {store.isSuspended && <span className="text-red-600 ml-1 text-[10px] bg-red-100 px-1 rounded font-bold">⚠️ SUSPENDIDO</span>}
+                            </p>
+                            <p className="text-gray-500 text-[11px]">{store.address}</p>
                           </div>
-                        ))
-                      )}
+                          <div className="flex gap-1">
+                            <button 
+                              onClick={() => handleToggleStoreSuspension(store.id, store.isSuspended)}
+                              className={`font-bold px-2 py-1.5 rounded text-[10px] shadow text-white ${store.isSuspended ? 'bg-green-600' : 'bg-yellow-600'}`}>
+                              {store.isSuspended ? 'Habilitar' : 'Suspender'}
+                            </button>
+                            <button onClick={() => handleDeleteStore(store.id, store.name)} className="bg-red-600 text-white font-bold px-2 py-1.5 rounded text-[10px] shadow">🗑️</button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
 
                     <div className="border p-3 rounded bg-blue-50 border-blue-200 space-y-2">
-                      <h3 className="font-bold text-blue-900 text-sm">🛵 Cadetes / Repartidores Registrados (Control y Suspensión)</h3>
-                      {cadetes.length === 0 ? (
-                        <p className="text-gray-500">No hay cadetes registrados actualmente.</p>
-                      ) : (
-                        cadetes.map(cadete => (
-                          <div key={cadete.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
-                            <div>
-                              <p className="font-bold text-gray-800">
-                                {cadete.name} ({cadete.vehicle})
-                                {cadete.isSuspended && <span className="text-red-600 ml-1 text-[10px] bg-red-100 px-1 rounded font-bold">⚠️ SUSPENDIDO</span>}
-                              </p>
-                              <p className="text-gray-500 text-[11px]">Tel: {cadete.phone} | Saldo: ${cadete.balance || 0}</p>
-                            </div>
-                            <div className="flex gap-1">
-                              <button 
-                                onClick={() => handleToggleCadeteSuspension(cadete.id, cadete.isSuspended)}
-                                className={`font-bold px-2 py-1.5 rounded text-[10px] shadow text-white ${cadete.isSuspended ? 'bg-green-600 hover:bg-green-700' : 'bg-yellow-600 hover:bg-yellow-700'}`}>
-                                {cadete.isSuspended ? 'Habilitar' : 'Suspender'}
-                              </button>
-                              <button 
-                                onClick={() => handleDeleteCadete(cadete.id, cadete.name)}
-                                className="bg-red-600 text-white font-bold px-2 py-1.5 rounded text-[10px] shadow hover:bg-red-700">
-                                🗑️
-                              </button>
-                            </div>
+                      <h3 className="font-bold text-blue-900 text-sm">🛵 Cadetes Registrados</h3>
+                      {cadetes.map(cadete => (
+                        <div key={cadete.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
+                          <div>
+                            <p className="font-bold text-gray-800">
+                              {cadete.name} ({cadete.vehicle})
+                              {cadete.isSuspended && <span className="text-red-600 ml-1 text-[10px] bg-red-100 px-1 rounded font-bold">⚠️ SUSPENDIDO</span>}
+                            </p>
+                            <p className="text-gray-500 text-[11px]">Saldo: ${cadete.balance || 0}</p>
                           </div>
-                        ))
-                      )}
+                          <div className="flex gap-1">
+                            <button 
+                              onClick={() => handleToggleCadeteSuspension(cadete.id, cadete.isSuspended)}
+                              className={`font-bold px-2 py-1.5 rounded text-[10px] shadow text-white ${cadete.isSuspended ? 'bg-green-600' : 'bg-yellow-600'}`}>
+                              {cadete.isSuspended ? 'Habilitar' : 'Suspender'}
+                            </button>
+                            <button onClick={() => handleDeleteCadete(cadete.id, cadete.name)} className="bg-red-600 text-white font-bold px-2 py-1.5 rounded text-[10px] shadow">🗑️</button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
 
                     <form onSubmit={handleRechargeBalance} className="border p-3 rounded bg-green-50 border-green-200 space-y-2">
@@ -1506,33 +1546,6 @@
                       </select>
                       <input required type="number" placeholder="Monto a recargar ($)" value={rechargeAmount} onChange={e=>setRechargeAmount(e.target.value)} className="w-full p-2 border rounded" />
                       <button type="submit" className="w-full bg-green-700 text-white py-2 rounded font-bold">Cargar Saldo</button>
-                    </form>
-
-                    <form onSubmit={handleCreateCadete} className="border p-3 rounded bg-gray-50 space-y-2">
-                      <h3 className="font-bold text-gray-800">Registrar Nuevo Cadete</h3>
-                      <input required type="text" placeholder="Nombre completo" value={newCadeteName} onChange={e=>newCadeteName(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required type="text" placeholder="Teléfono WhatsApp (Ej: 3826123456)" value={newCadetePhone} onChange={e=>setNewCadetePhone(e.target.value)} className="w-full p-2 border rounded" />
-                      <select value={newCadeteVehicle} onChange={e=>setNewCadeteVehicle(e.target.value)} className="w-full p-2 border rounded bg-white">
-                        <option value="Moto">Moto</option>
-                        <option value="Bicicleta">Bicicleta</option>
-                        <option value="Auto">Auto</option>
-                      </select>
-                      <input required type="text" placeholder="Usuario para el cadete" value={newCadeteUser} onChange={e=>setNewCadeteUser(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required type="text" placeholder="Contraseña para el cadete" value={newCadetePass} onChange={e=>setNewCadetePass(e.target.value)} className="w-full p-2 border rounded" />
-                      <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold">Crear Cadete</button>
-                    </form>
-
-                    <form onSubmit={handleCreateStore} className="border p-3 rounded bg-gray-50 space-y-2">
-                      <h3 className="font-bold text-gray-800">Registrar Nuevo Comercio / Kiosco (con datos de pago)</h3>
-                      <input required type="text" placeholder="Nombre del Negocio" value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required type="text" placeholder="Dirección del Local" value={newStoreAddress} onChange={e=>setNewStoreAddress(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required type="text" placeholder="WhatsApp del local (Ej: 3826123456)" value={newStorePhone} onChange={e=>setNewStorePhone(e.target.value)} className="w-full p-2 border rounded" />
-                      <input type="text" placeholder="Alias de Mercado Pago del Local" value={newStoreAlias} onChange={e=>setNewStoreAlias(e.target.value)} className="w-full p-2 border rounded font-mono" />
-                      <input type="text" placeholder="Nombre del Titular de la cuenta" value={newStoreTitular} onChange={e=>setNewStoreTitular(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required type="text" placeholder="Horario (Ej: 08:00 a 23:00 hs)" value={newStoreHours} onChange={e=>setNewStoreHours(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required type="text" placeholder="Usuario para el comercio" value={newStoreUser} onChange={e=>setNewStoreUser(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required type="text" placeholder="Contraseña para el comercio" value={newStorePass} onChange={e=>setNewStorePass(e.target.value)} className="w-full p-2 border rounded" />
-                      <button type="submit" className="w-full bg-gray-700 text-white py-2 rounded font-bold">Crear Comercio</button>
                     </form>
                   </div>
                 )}
