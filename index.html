@@ -360,7 +360,7 @@
       };
 
       const handleResetStoreCommission = async (storeId) => {
-        if (confirm("¿Confirmas que el comercio te abonó la comisión dominical? Esto pondrá su saldo deudor en $0.")) {
+        if (confirm("¿Confirmas que el comercio te abonó la comisión semanal? Esto pondrá su saldo deudor en $0.")) {
           try {
             const batch = db.batch();
             const storeOrders = orders.filter(o => {
@@ -1404,7 +1404,33 @@
                       })}
                     </div>
 
-                    {/* SECCIÓN RECUPERADA: CARGAR SALDO A CADETES */}
+                    {/* NUEVA SECCIÓN: AGENDA DE WHATSAPP Y ALIAS DE COMERCIOS */}
+                    <div className="border p-3 rounded bg-green-50 border-green-200 space-y-2">
+                      <h3 className="font-bold text-green-900 text-sm">📱 Agenda de WhatsApp y Alias de Comercios</h3>
+                      <p className="text-[11px] text-green-800">Números directos de los comercios para coordinar la comisión o comunicarte:</p>
+                      {stores.length === 0 ? (
+                        <p className="text-gray-500 italic">No hay comercios registrados aún.</p>
+                      ) : (
+                        stores.map(store => (
+                          <div key={store.id} className="bg-white p-2.5 rounded border space-y-1">
+                            <div className="flex justify-between items-center">
+                              <p className="font-bold text-gray-800 text-xs">🏪 {store.name}</p>
+                              {store.phone && (
+                                <a 
+                                  href={`https://wa.me/549${store.phone}?text=Hola%20${encodeURIComponent(store.name)},%20te%20escribo%20desde%20Catuna%20Pedidos%20por%20el%20cierre%20de%20comisión%20de%20la%20semana.`} 
+                                  target="_blank" 
+                                  className="bg-green-600 text-white px-2 py-1 rounded text-[10px] font-bold shadow hover:bg-green-700 flex items-center gap-1">
+                                  💬 Abrir WhatsApp
+                                </a>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-gray-600">📞 Tel: <strong>{store.phone || 'No registrado'}</strong></p>
+                            <p className="text-[11px] text-gray-600">💳 Alias: <span className="font-mono font-bold select-all">{store.alias || 'No registrado'}</span></p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
                     <div className="border p-3 rounded bg-blue-50 border-blue-200 space-y-3">
                       <h3 className="font-bold text-blue-900 text-sm">🛵 Recargar Saldo a Cadete</h3>
                       <form onSubmit={handleRechargeBalance} className="space-y-2">
