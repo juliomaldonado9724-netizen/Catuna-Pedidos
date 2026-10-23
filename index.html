@@ -108,13 +108,47 @@
       const [prodPrice, setProdPrice] = useState('');
       const [prodDesc, setProdDesc] = useState('');
       const [prodImg, setProdImg] = useState('');
+      const [isCompressing, setIsCompressing] = useState(false);
 
+      // FUNCIÓN PARA COMPRIMIR Y REDIMENSIONAR IMÁGENES
       const handleImageUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
+
+        setIsCompressing(true);
         const reader = new FileReader();
-        reader.onloadend = () => {
-          setProdImg(reader.result);
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 500;
+            const MAX_HEIGHT = 500;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+              if (width > MAX_WIDTH) {
+                height *= MAX_WIDTH / width;
+                width = MAX_WIDTH;
+              }
+            } else {
+              if (height > MAX_HEIGHT) {
+                width *= MAX_HEIGHT / height;
+                height = MAX_HEIGHT;
+              }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // Exporta la imagen comprimida en JPEG al 70% de calidad
+            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+            setProdImg(compressedBase64);
+            setIsCompressing(false);
+          };
+          img.src = event.target.result;
         };
         reader.readAsDataURL(file);
       };
@@ -253,6 +287,10 @@
       const handleAddProduct = async (e) => {
         e.preventDefault();
         if (!loggedStore) return;
+        if (isCompressing) {
+          alert("Espera un segundo mientras se procesa la foto...");
+          return;
+        }
         try {
           await db.collection('products').add({
             storeId: loggedStore.id, 
@@ -263,7 +301,7 @@
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
           setProdName(''); setProdPrice(''); setProdDesc(''); setProdImg('');
-          alert("Producto guardado en la nube con su foto.");
+          alert("Producto guardado con éxito en la nube.");
         } catch (err) {
           alert("Error al guardar producto: " + err.message);
         }
@@ -563,10 +601,11 @@
                       <div className="bg-white p-2 border rounded space-y-1">
                         <label className="block text-[11px] font-bold text-gray-700">📷 Saca o selecciona la foto del producto:</label>
                         <input required type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs file:mr-4 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-red-50 file:text-red-700 hover:file:bg-red-100" />
-                        {prodImg && <p className="text-[10px] text-green-600 font-bold">✅ Foto cargada correctamente</p>}
+                        {isCompressing && <p className="text-[10px] text-orange-600 font-bold">⏳ Procesando y optimizando imagen...</p>}
+                        {prodImg && !isCompressing && <p className="text-[10px] text-green-600 font-bold">✅ Foto lista y optimizada</p>}
                       </div>
 
-                      <button type="submit" className="w-full bg-green-600 text-white py-2 rounded font-bold">Guardar Producto en la Nube</button>
+                      <button type="submit" disabled={isCompressing} className={`w-full text-white py-2 rounded font-bold ${isCompressing ? 'bg-gray-400' : 'bg-green-600'}`}>Guardar Producto en la Nube</button>
                     </form>
 
                     <div className="space-y-2">
