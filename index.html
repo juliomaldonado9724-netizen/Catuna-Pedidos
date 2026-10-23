@@ -185,6 +185,17 @@
         }
       };
 
+      const handleDeleteCadete = async (cadeteId, cadeteName) => {
+        if (confirm(`¿Estás seguro de que deseas eliminar al cadete / repartidor "${cadeteName}"?`)) {
+          try {
+            await db.collection('cadetes').doc(cadeteId).delete();
+            alert("Cadete eliminado con éxito.");
+          } catch (err) {
+            alert("Error al eliminar cadete: " + err.message);
+          }
+        }
+      };
+
       const handleRechargeBalance = async (e) => {
         e.preventDefault();
         const amount = Number(rechargeAmount);
@@ -726,7 +737,7 @@
 
                     {/* SECCIÓN GESTIÓN Y ELIMINACIÓN DE COMERCIOS */}
                     <div className="border p-3 rounded bg-gray-50 space-y-2">
-                      <h3 className="font-bold text-gray-800 text-sm">🏪 Comercios Registrados en la App</h3>
+                      <h3 className="font-bold text-gray-800 text-sm">🏪 Comercios Registrados</h3>
                       {stores.length === 0 ? (
                         <p className="text-gray-500">No hay comercios registrados actualmente.</p>
                       ) : (
@@ -739,6 +750,29 @@
                             </div>
                             <button 
                               onClick={() => handleDeleteStore(store.id, store.name)}
+                              className="bg-red-600 text-white font-bold px-2 py-1.5 rounded text-[11px] shadow hover:bg-red-700">
+                              🗑️ Eliminar
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    {/* SECCIÓN GESTIÓN Y ELIMINACIÓN DE CADETES */}
+                    <div className="border p-3 rounded bg-blue-50 border-blue-200 space-y-2">
+                      <h3 className="font-bold text-blue-900 text-sm">🛵 Cadetes / Repartidores Registrados</h3>
+                      {cadetes.length === 0 ? (
+                        <p className="text-gray-500">No hay cadetes registrados actualmente.</p>
+                      ) : (
+                        cadetes.map(cadete => (
+                          <div key={cadete.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
+                            <div>
+                              <p className="font-bold text-gray-800">{cadete.name} ({cadete.vehicle})</p>
+                              <p className="text-gray-500 text-[11px]">Tel: {cadete.phone} | Usuario: {cadete.user}</p>
+                              <p className="text-green-700 font-bold text-[11px]">Saldo actual: ${cadete.balance || 0}</p>
+                            </div>
+                            <button 
+                              onClick={() => handleDeleteCadete(cadete.id, cadete.name)}
                               className="bg-red-600 text-white font-bold px-2 py-1.5 rounded text-[11px] shadow hover:bg-red-700">
                               🗑️ Eliminar
                             </button>
