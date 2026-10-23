@@ -126,15 +126,15 @@
         e.preventDefault();
         try {
           await db.collection('stores').add({
-            name: newStoreName || '', 
-            address: newStoreAddress || '', 
-            phone: newStorePhone || '',
-            alias: newStoreAlias || '',
-            titular: newStoreTitular || '',
+            name: newStoreName, 
+            address: newStoreAddress, 
+            phone: newStorePhone,
+            alias: newStoreAlias,
+            titular: newStoreTitular,
             hours: newStoreHours || '20:00 a 00:00 hs',
             isOpen: true,
-            user: newStoreUser || '', 
-            pass: newStorePass || '',
+            user: newStoreUser, 
+            pass: newStorePass,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
           setNewStoreName(''); setNewStoreAddress(''); setNewStorePhone(''); setNewStoreAlias(''); setNewStoreTitular(''); setNewStoreHours('20:00 a 00:00 hs'); setNewStoreUser(''); setNewStorePass('');
@@ -148,11 +148,11 @@
         e.preventDefault();
         try {
           await db.collection('cadetes').add({
-            name: newCadeteName || '', 
-            phone: newCadetePhone || '', 
-            vehicle: newCadeteVehicle || 'Moto', 
-            user: newCadeteUser || '', 
-            pass: newCadetePass || '', 
+            name: newCadeteName, 
+            phone: newCadetePhone, 
+            vehicle: newCadeteVehicle, 
+            user: newCadeteUser, 
+            pass: newCadetePass, 
             balance: 0, 
             isOnline: true,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -224,9 +224,9 @@
         try {
           await db.collection('products').add({
             storeId: loggedStore.id, 
-            name: prodName || '', 
+            name: prodName, 
             price: Number(prodPrice) || 0, 
-            description: prodDesc || '', 
+            description: prodDesc, 
             image: prodImg || 'https://via.placeholder.com/150',
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
@@ -322,9 +322,9 @@
             storeName: selectedStore.name,
             storeAddress: selectedStore.address,
             storePhone: selectedStore.phone,
-            customerName: custName || '',
-            customerPhone: custPhone || '',
-            address: custAddress || '',
+            customerName: custName,
+            customerPhone: custPhone,
+            address: custAddress,
             items: cart,
             deliveryFee: DELIVERY_FEE,
             subtotal,
@@ -709,7 +709,7 @@
 
                     <form onSubmit={handleCreateCadete} className="border p-3 rounded bg-gray-50 space-y-2">
                       <h3 className="font-bold text-gray-800">Registrar Nuevo Cadete</h3>
-                      <input required placeholder="Nombre completo" value={newCadeteName} onChange={e=>setNewCadeteName(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required type="text" placeholder="Nombre completo" value={newCadeteName} onChange={e=>setNewCadeteName(e.target.value)} className="w-full p-2 border rounded" />
                       <input required type="text" placeholder="Teléfono WhatsApp (Ej: 3826123456)" value={newCadetePhone} onChange={e=>setNewCadetePhone(e.target.value)} className="w-full p-2 border rounded" />
                       <select value={newCadeteVehicle} onChange={e=>setNewCadeteVehicle(e.target.value)} className="w-full p-2 border rounded bg-white">
                         <option value="Moto">Moto</option>
@@ -717,23 +717,23 @@
                         <option value="Auto">Auto</option>
                       </select>
                       <div className="grid grid-cols-2 gap-2">
-                        <input required placeholder="Usuario" value={newCadeteUser} onChange={e=>setNewCadeteUser(e.target.value)} className="w-full p-2 border rounded" />
-                        <input required placeholder="Contraseña" value={newCadetePass} onChange={e=>setNewCadetePass(e.target.value)} className="w-full p-2 border rounded" />
+                        <input required type="text" placeholder="Usuario" value={newCadeteUser} onChange={e=>setNewCadeteUser(e.target.value)} className="w-full p-2 border rounded" />
+                        <input required type="password" placeholder="Contraseña" value={newCadetePass} onChange={e=>setNewCadetePass(e.target.value)} className="w-full p-2 border rounded" />
                       </div>
                       <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold">Crear Cadete</button>
                     </form>
 
                     <form onSubmit={handleCreateStore} className="border p-3 rounded bg-gray-50 space-y-2">
                       <h3 className="font-bold text-gray-800">Registrar Nuevo Comercio (con datos de pago)</h3>
-                      <input required placeholder="Nombre del Negocio" value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required placeholder="Dirección del Local" value={newStoreAddress} onChange={e=>setNewStoreAddress(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required type="text" placeholder="WhatsApp del local (Ej: 3826123456)" value={newStorePhone} onChange={e=>newStorePhone(e.target.value)} className="w-full p-2 border rounded" />
-                      <input placeholder="Alias de Mercado Pago del Local" value={newStoreAlias} onChange={e=>newStoreAlias(e.target.value)} className="w-full p-2 border rounded font-mono" />
-                      <input placeholder="Nombre del Titular de la cuenta" value={newStoreTitular} onChange={e=>newStoreTitular(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required placeholder="Horario (Ej: 20:00 a 00:00 hs)" value={newStoreHours} onChange={e=>newStoreHours(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required type="text" placeholder="Nombre del Negocio" value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required type="text" placeholder="Dirección del Local" value={newStoreAddress} onChange={e=>setNewStoreAddress(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required type="text" placeholder="WhatsApp del local (Ej: 3826123456)" value={newStorePhone} onChange={e=>setNewStorePhone(e.target.value)} className="w-full p-2 border rounded" />
+                      <input type="text" placeholder="Alias de Mercado Pago del Local" value={newStoreAlias} onChange={e=>setNewStoreAlias(e.target.value)} className="w-full p-2 border rounded font-mono" />
+                      <input type="text" placeholder="Nombre del Titular de la cuenta" value={newStoreTitular} onChange={e=>setNewStoreTitular(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required type="text" placeholder="Horario (Ej: 20:00 a 00:00 hs)" value={newStoreHours} onChange={e=>setNewStoreHours(e.target.value)} className="w-full p-2 border rounded" />
                       <div className="grid grid-cols-2 gap-2">
-                        <input required placeholder="Usuario" value={newStoreUser} onChange={e=>newStoreUser(e.target.value)} className="w-full p-2 border rounded" />
-                        <input required placeholder="Contraseña" value={newStorePass} onChange={e=>newStorePass(e.target.value)} className="w-full p-2 border rounded" />
+                        <input required type="text" placeholder="Usuario" value={newStoreUser} onChange={e=>newStoreUser(e.target.value)} className="w-full p-2 border rounded" />
+                        <input required type="password" placeholder="Contraseña" value={newStorePass} onChange={e=>newStorePass(e.target.value)} className="w-full p-2 border rounded" />
                       </div>
                       <button type="submit" className="w-full bg-gray-700 text-white py-2 rounded font-bold">Crear Comercio</button>
                     </form>
