@@ -104,7 +104,6 @@
       const [loggedStore, setLoggedStore] = useState(null);
       const [loggedCadete, setLoggedCadete] = useState(null);
 
-      // ESTADOS NUEVO PRODUCTO CON ARCHIVO DE FOTO
       const [prodName, setProdName] = useState('');
       const [prodPrice, setProdPrice] = useState('');
       const [prodDesc, setProdDesc] = useState('');
@@ -152,6 +151,17 @@
           alert("Comercio registrado con éxito en la nube.");
         } catch (err) {
           alert("Error al registrar comercio: " + err.message);
+        }
+      };
+
+      const handleDeleteStore = async (storeId, storeName) => {
+        if (confirm(`¿Estás seguro de que deseas eliminar permanentemente el comercio "${storeName}"?`)) {
+          try {
+            await db.collection('stores').doc(storeId).delete();
+            alert("Comercio eliminado con éxito.");
+          } catch (err) {
+            alert("Error al eliminar comercio: " + err.message);
+          }
         }
       };
 
@@ -712,6 +722,29 @@
                           </div>
                         );
                       })}
+                    </div>
+
+                    {/* SECCIÓN GESTIÓN Y ELIMINACIÓN DE COMERCIOS */}
+                    <div className="border p-3 rounded bg-gray-50 space-y-2">
+                      <h3 className="font-bold text-gray-800 text-sm">🏪 Comercios Registrados en la App</h3>
+                      {stores.length === 0 ? (
+                        <p className="text-gray-500">No hay comercios registrados actualmente.</p>
+                      ) : (
+                        stores.map(store => (
+                          <div key={store.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
+                            <div>
+                              <p className="font-bold text-gray-800">{store.name}</p>
+                              <p className="text-gray-500 text-[11px]">{store.address} - Tel: {store.phone}</p>
+                              <p className="text-gray-400 text-[10px]">Usuario: {store.user}</p>
+                            </div>
+                            <button 
+                              onClick={() => handleDeleteStore(store.id, store.name)}
+                              className="bg-red-600 text-white font-bold px-2 py-1.5 rounded text-[11px] shadow hover:bg-red-700">
+                              🗑️ Eliminar
+                            </button>
+                          </div>
+                        ))
+                      )}
                     </div>
 
                     <form onSubmit={handleRechargeBalance} className="border p-3 rounded bg-green-50 border-green-200 space-y-2">
