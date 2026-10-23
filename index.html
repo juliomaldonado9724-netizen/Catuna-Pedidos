@@ -32,8 +32,8 @@ html
         banco: "Mercado Pago"
       };
 
-      const STORE_COMMISSION_PERCENT = 0.10; // 10% de comisión para el comercio
-      const APP_FEE = 300; // Tarifa de la app por pedido (Cadete)
+      const STORE_COMMISSION_PERCENT = 0.10; // 10% comisión
+      const APP_FEE = 300; // Tarifa app para cadetes
 
       // Base de datos LocalStorage
       const [stores, setStores] = useState(() => {
@@ -67,6 +67,7 @@ html
       
       const [newStoreName, setNewStoreName] = useState('');
       const [newStoreAddress, setNewStoreAddress] = useState('');
+      const [newStoreHours, setNewStoreHours] = useState('20:00 a 00:00 hs');
       const [newStoreUser, setNewStoreUser] = useState('');
       const [newStorePass, setNewStorePass] = useState('');
 
@@ -107,9 +108,17 @@ html
 
       const handleCreateStore = (e) => {
         e.preventDefault();
-        const store = { id: Date.now(), name: newStoreName, address: newStoreAddress, user: newStoreUser, pass: newStorePass };
+        const store = { 
+          id: Date.now(), 
+          name: newStoreName, 
+          address: newStoreAddress, 
+          hours: newStoreHours || '20:00 a 00:00 hs',
+          isOpen: true,
+          user: newStoreUser, 
+          pass: newStorePass 
+        };
         setStores([...stores, store]);
-        setNewStoreName(''); setNewStoreAddress(''); setNewStoreUser(''); setNewStorePass('');
+        setNewStoreName(''); setNewStoreAddress(''); setNewStoreHours(''); setNewStoreUser(''); setNewStorePass('');
         alert("Comercio registrado con éxito.");
       };
 
@@ -133,7 +142,7 @@ html
       const handleResetStoreCommission = (storeId) => {
         if (confirm("¿Confirmas que el comercio abonó la comisión acumulada? Esto reiniciará el historial de ventas pagadas.")) {
           setOrders(orders.map(o => o.storeId === storeId ? { ...o, storeSettled: true } : o));
-          alert("Comisión cobrada y cuentes saldadas.");
+          alert("Comisión cobrada y cuentas saldadas.");
         }
       };
 
@@ -143,6 +152,14 @@ html
         const found = stores.find(s => s.user === loginUser && s.pass === loginPass);
         if (found) setLoggedStore(found);
         else alert("Usuario o clave incorrectos");
+      };
+
+      const toggleStoreOpenStatus = () => {
+        if (!loggedStore) return;
+        const updatedStatus = !loggedStore.isOpen;
+        const updatedStore = { ...loggedStore, isOpen: updatedStatus };
+        setLoggedStore(updatedStore);
+        setStores(stores.map(s => s.id === loggedStore.id ? updatedStore : s));
       };
 
       const handleAddProduct = (e) => {
@@ -188,6 +205,10 @@ html
 
       // --- ACCIONES CLIENTE ---
       const addToCart = (product, store) => {
+        if (!store.isOpen) {
+          alert("Este local está cerrado actualmente.");
+          return;
+        }
         if (selectedStore && selectedStore.id !== store.id) {
           if (!confirm("Solo puedes pedir a un negocio a la vez. ¿Deseas reiniciar el carrito?")) return;
           setCart([]);
@@ -253,9 +274,15 @@ html
                 ) : (
                   stores.map(store => (
                     <div key={store.id} className="border rounded-lg p-3 bg-gray-50 shadow-sm space-y-3">
-                      <div>
-                        <h3 className="font-bold text-gray-800 text-base">{store.name}</h3>
-                        <p className="text-xs text-gray-500">{store.address}</p>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-bold text-gray-800 text-base">{store.name}</h3>
+                          <p className="text-xs text-gray-500">{store.address}</p>
+                          <p className="text-[11px] text-gray-400">🕒 Horario: {store.hours}</p>
+                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-1 rounded ${store.isOpen ? 'bg-green-100 text-green-800 border border-green-300' : 'bg-red-100 text-red-800 border border-red-300'}`}>
+                          {store.isOpen ? '🟢 ABIERTO' : '🔴 CERRADO'}
+                        </span>
                       </div>
 
                       <div className="space-y-2">
@@ -267,8 +294,11 @@ html
                               <p className="text-xs text-gray-500">{prod.description}</p>
                               <p className="text-xs font-bold text-red-600 mt-1">${prod.price}</p>
                             </div>
-                            <button onClick={() => addToCart(prod, store)} className="bg-red-600 text-white text-xs px-2.5 py-1.5 rounded font-bold">
-                              + Pedir
+                            <button 
+                              onClick={() => addToCart(prod, store)} 
+                              disabled={!store.isOpen}
+                              className={`text-xs px-2.5 py-1.5 rounded font-bold ${store.isOpen ? 'bg-red-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>
+                              {store.isOpen ? '+ Pedir' : 'Cerrado'}
                             </button>
                           </div>
                         ))}
@@ -305,9 +335,25 @@ html
                   </form>
                 ) : (
                   <div className="space-y-4 text-xs">
-                    <div className="flex justify-between items-center bg-gray-100 p-2 rounded">
-                      <span className="font-bold text-gray-800">{loggedStore.name}</span>
+                    <div className="flex justify-between items-center bg-gray-100 p-2.5 rounded border">
+                      <div>
+                        <p className="font-bold text-gray-800 text-sm">{loggedStore.name}</p>
+                        <p className="text-gray-500 text-[11px]">{loggedStore.hours}</p>
+                      </div>
                       <button onClick={()=>setLoggedStore(null)} className="text-red-600 font-bold underline">Salir</button>
+                    </div>
+
+                    {/* INTERRUPTOR ABIERTO / CERRADO */}
+                    <div className="border p-3 rounded bg-gray-50 flex justify-between items-center">
+                      <div>
+                        <p className="font-bold text-gray-800">Estado del Local:</p>
+                        <p className="text-gray-500 text-[11px]">Cambia el estado para recibir o pausar pedidos.</p>
+                      </div>
+                      <button 
+                        onClick={toggleStoreOpenStatus} 
+                        className={`px-3 py-1.5 rounded font-bold text-white shadow ${loggedStore.isOpen ? 'bg-green-600' : 'bg-red-600'}`}>
+                        {loggedStore.isOpen ? '🟢 ABIERTO' : '🔴 CERRADO'}
+                      </button>
                     </div>
 
                     <form onSubmit={handleAddProduct} className="border p-3 rounded bg-gray-50 space-y-2">
@@ -441,7 +487,7 @@ html
 
                     {/* CONTROL DE COMISIONES POR COMERCIO (10%) */}
                     <div className="border p-3 rounded bg-orange-50 border-orange-200 space-y-2">
-                      <h3 className="font-bold text-orange-900 text-sm">📊 Rendición de Comisiones de Comercios (10%)</h3>
+                      <h3 className="font-bold text-orange-900 text-sm">📊 Rendición de Comisiones (10%)</h3>
                       {stores.length === 0 ? <p className="text-gray-500">No hay comercios cargados.</p> : null}
                       {stores.map(store => {
                         const storeOrders = orders.filter(o => o.storeId === store.id && o.status === 'entregado' && !o.storeSettled);
@@ -453,7 +499,7 @@ html
                             <div>
                               <p className="font-bold text-gray-800">{store.name}</p>
                               <p className="text-gray-600">Ventas Pendientes: <strong>${totalSales}</strong></p>
-                              <p className="text-orange-700 font-bold">Comisión 10% a Cobrar: ${commissionDue}</p>
+                              <p className="text-orange-700 font-bold">Comisión 10%: ${commissionDue}</p>
                             </div>
                             <button 
                               onClick={()=>handleResetStoreCommission(store.id)}
@@ -499,6 +545,7 @@ html
                       <h3 className="font-bold text-gray-800">Registrar Nuevo Comercio</h3>
                       <input required placeholder="Nombre del Negocio" value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} className="w-full p-2 border rounded" />
                       <input required placeholder="Dirección del Local" value={newStoreAddress} onChange={e=>setNewStoreAddress(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required placeholder="Horario habitual (Ej: 20:00 a 00:00 hs)" value={newStoreHours} onChange={e=>setNewStoreHours(e.target.value)} className="w-full p-2 border rounded" />
                       <div className="grid grid-cols-2 gap-2">
                         <input required placeholder="Usuario" value={newStoreUser} onChange={e=>setNewStoreUser(e.target.value)} className="w-full p-2 border rounded" />
                         <input required placeholder="Contraseña" value={newStorePass} onChange={e=>setNewStorePass(e.target.value)} className="w-full p-2 border rounded" />
