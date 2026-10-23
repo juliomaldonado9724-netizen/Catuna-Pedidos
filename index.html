@@ -475,7 +475,7 @@
                         <p><strong>Retirar en:</strong> {o.storeAddress}</p>
                         <p><strong>Cliente:</strong> {o.customerName}</p>
                         <p><strong>Dirección:</strong> {o.address}</p>
-                        <p className="font-bold text-gray-900 bg-yellow-100 p-1.5 rounded">Cobrar al Cliente en mano: ${o.total}</p>
+                        <p className="font-bold text-gray-900 bg-yellow-100 p-1.5 rounded">Cobrar al Cliente in mano: ${o.total}</p>
 
                         <div className="grid grid-cols-2 gap-2 pt-1">
                           <a 
@@ -564,11 +564,11 @@
                       <button type="submit" className="w-full bg-green-700 text-white py-2 rounded font-bold">Cargar Saldo</button>
                     </form>
 
-                    {/* Crear Cadete */}
+                    {/* Crear Cadete (teléfono cambiado a text libre) */}
                     <form onSubmit={handleCreateCadete} className="border p-3 rounded bg-gray-50 space-y-2">
                       <h3 className="font-bold text-gray-800">Registrar Nuevo Cadete</h3>
                       <input required placeholder="Nombre completo" value={newCadeteName} onChange={e=>setNewCadeteName(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required placeholder="Teléfono WhatsApp" value={newCadetePhone} onChange={e=>setNewCadetePhone(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required type="text" placeholder="Teléfono WhatsApp (Ej: 3826123456)" value={newCadetePhone} onChange={e=>setNewCadetePhone(e.target.value)} className="w-full p-2 border rounded" />
                       <select value={newCadeteVehicle} onChange={e=>setNewCadeteVehicle(e.target.value)} className="w-full p-2 border rounded bg-white">
                         <option value="Moto">Moto</option>
                         <option value="Bicicleta">Bicicleta</option>
@@ -581,18 +581,18 @@
                       <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold">Crear Cadete</button>
                     </form>
 
-                    {/* Crear Comercio con Datos Bancarios */}
+                    {/* Crear Comercio con Datos Bancarios (teléfono cambiado a text libre) */}
                     <form onSubmit={handleCreateStore} className="border p-3 rounded bg-gray-50 space-y-2">
                       <h3 className="font-bold text-gray-800">Registrar Nuevo Comercio (con datos de pago)</h3>
                       <input required placeholder="Nombre del Negocio" value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} className="w-full p-2 border rounded" />
                       <input required placeholder="Dirección del Local" value={newStoreAddress} onChange={e=>setNewStoreAddress(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required placeholder="WhatsApp del local (Ej: 3826123456)" value={newStorePhone} onChange={e=>newStorePhone(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required type="text" placeholder="WhatsApp del local (Ej: 3826123456)" value={newStorePhone} onChange={e=>setNewStorePhone(e.target.value)} className="w-full p-2 border rounded" />
                       <input placeholder="Alias de Mercado Pago del Local" value={newStoreAlias} onChange={e=>setNewStoreAlias(e.target.value)} className="w-full p-2 border rounded font-mono" />
                       <input placeholder="Nombre del Titular de la cuenta" value={newStoreTitular} onChange={e=>setNewStoreTitular(e.target.value)} className="w-full p-2 border rounded" />
-                      <input required placeholder="Horario (Ej: 20:00 a 00:00 hs)" value={newStoreHours} onChange={e=>setNewStoreHours(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required placeholder="Horario (Ej: 20:00 a 00:00 hs)" value={newStoreHours} onChange={e=>newStoreHours(e.target.value)} className="w-full p-2 border rounded" />
                       <div className="grid grid-cols-2 gap-2">
-                        <input required placeholder="Usuario" value={newStoreUser} onChange={e=>setNewStoreUser(e.target.value)} className="w-full p-2 border rounded" />
-                        <input required placeholder="Contraseña" value={newStorePass} onChange={e=>setNewStorePass(e.target.value)} className="w-full p-2 border rounded" />
+                        <input required placeholder="Usuario" value={newStoreUser} onChange={e=>newStoreUser(e.target.value)} className="w-full p-2 border rounded" />
+                        <input required placeholder="Contraseña" value={newStorePass} onChange={e=>newStorePass(e.target.value)} className="w-full p-2 border rounded" />
                       </div>
                       <button type="submit" className="w-full bg-gray-700 text-white py-2 rounded font-bold">Crear Comercio</button>
                     </form>
