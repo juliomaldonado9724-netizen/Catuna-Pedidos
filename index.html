@@ -716,10 +716,8 @@
                         <option value="Bicicleta">Bicicleta</option>
                         <option value="Auto">Auto</option>
                       </select>
-                      <div className="grid grid-cols-2 gap-2">
-                        <input required type="text" placeholder="Usuario" value={newCadeteUser} onChange={e=>setNewCadeteUser(e.target.value)} className="w-full p-2 border rounded" />
-                        <input required type="password" placeholder="Contraseña" value={newCadetePass} onChange={e=>setNewCadetePass(e.target.value)} className="w-full p-2 border rounded" />
-                      </div>
+                      <input required type="text" placeholder="Usuario para el cadete" value={newCadeteUser} onChange={e=>setNewCadeteUser(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required type="text" placeholder="Contraseña para el cadete" value={newCadetePass} onChange={e=>setNewCadetePass(e.target.value)} className="w-full p-2 border rounded" />
                       <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold">Crear Cadete</button>
                     </form>
 
@@ -731,10 +729,8 @@
                       <input type="text" placeholder="Alias de Mercado Pago del Local" value={newStoreAlias} onChange={e=>setNewStoreAlias(e.target.value)} className="w-full p-2 border rounded font-mono" />
                       <input type="text" placeholder="Nombre del Titular de la cuenta" value={newStoreTitular} onChange={e=>setNewStoreTitular(e.target.value)} className="w-full p-2 border rounded" />
                       <input required type="text" placeholder="Horario (Ej: 20:00 a 00:00 hs)" value={newStoreHours} onChange={e=>setNewStoreHours(e.target.value)} className="w-full p-2 border rounded" />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input required type="text" placeholder="Usuario" value={newStoreUser} onChange={e=>newStoreUser(e.target.value)} className="w-full p-2 border rounded" />
-                        <input required type="password" placeholder="Contraseña" value={newStorePass} onChange={e=>newStorePass(e.target.value)} className="w-full p-2 border rounded" />
-                      </div>
+                      <input required type="text" placeholder="Usuario para el comercio" value={newStoreUser} onChange={e=>setNewStoreUser(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required type="text" placeholder="Contraseña para el comercio" value={newStorePass} onChange={e=>newStorePass(e.target.value)} className="w-full p-2 border rounded" />
                       <button type="submit" className="w-full bg-gray-700 text-white py-2 rounded font-bold">Crear Comercio</button>
                     </form>
                   </div>
