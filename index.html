@@ -564,7 +564,6 @@
         }
       };
 
-      // CÁLCULOS DEL CARRITO
       const cartSubtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
       const uniqueStoresInCart = [...new Set(cart.map(i => i.storeId))].length;
       const calculatedDeliveryFee = BASE_DELIVERY_FEE + (Math.max(0, uniqueStoresInCart - 1) * 500);
@@ -664,7 +663,6 @@
 
       const totalCartItemsCount = cart.reduce((sum, item) => sum + Number(item.quantity), 0);
 
-      // BUSCAR ÚLTIMO PEDIDO REALIZADO POR EL CLIENTE EN TIEMPO REAL
       const activeLiveOrder = orders.find(o => o.id === lastOrderId);
       const activeCadete = activeLiveOrder ? cadetes.find(c => c.id === activeLiveOrder.cadeteId) : null;
 
@@ -697,7 +695,6 @@
             {currentTab === 'cliente' && (
               <div className="space-y-4">
                 
-                {/* TRACKING EN TIEMPO REAL CON EXPLICACIÓN DE PAGO POR TRANSFERENCIA */}
                 {activeLiveOrder && activeLiveOrder.status !== 'entregado' && activeLiveOrder.status !== 'cancelado_por_tiempo' && (
                   <div className={`p-4 rounded-xl border-2 text-center space-y-3 shadow-lg transition-all ${activeLiveOrder.status === 'en_camino' ? 'bg-green-50 border-green-500 animate-pulse' : 'bg-orange-50 border-orange-400'}`}>
                     
@@ -721,20 +718,25 @@
                       </p>
                     </div>
 
-                    <div className="bg-gray-50 p-2.5 rounded border text-xs text-left space-y-1">
-                      <p className="text-gray-700">Forma de pago: <strong>{activeLiveOrder.paymentMethod}</strong></p>
+                    {/* BLOQUE DE PAGOS CORREGIDO Y CLARO */}
+                    <div className="bg-white p-3 rounded-lg border border-orange-200 text-left text-xs space-y-2 shadow-sm">
+                      <p className="font-bold text-gray-800">Forma de Pago: <span className="text-red-600">{activeLiveOrder.paymentMethod}</span></p>
+                      
                       {activeLiveOrder.paymentMethod === 'Transferencia' ? (
-                        <div className="bg-blue-50 border border-blue-200 p-2 rounded text-[11px] space-y-1 mt-1">
-                          <p className="font-bold text-blue-950">💡 Aclaración sobre el pago:</p>
+                        <div className="bg-blue-50 border border-blue-200 p-2.5 rounded text-[11px] space-y-1">
+                          <p className="font-bold text-blue-950">💡 CÓMO PAGAR TU PEDIDO:</p>
                           <p className="text-blue-900">
-                            • Solo debes transferir el valor de los productos: <strong>${Math.round(activeLiveOrder.subtotal || 0)}</strong> al alias del comercio.
+                            1. <strong>Productos a transferir al comercio:</strong> <span className="font-extrabold text-red-600">${Math.round(activeLiveOrder.subtotal || 0)}</span> (ver alias abajo).
                           </p>
                           <p className="text-blue-900">
-                            • El costo de envío (<strong>${Math.round(activeLiveOrder.deliveryFee || BASE_DELIVERY_FEE)}</strong>) se le paga <strong>aparte y en efectivo al cadete</strong> al recibir tu pedido.
+                            2. <strong>Envío a pagar en efectivo al cadete:</strong> <span className="font-extrabold text-green-700">${Math.round(activeLiveOrder.deliveryFee || BASE_DELIVERY_FEE)}</span> (al recibir).
                           </p>
                         </div>
                       ) : (
-                        <p className="text-gray-700">Total general a abonar al cadete (Productos + Envío): <strong>${Math.round(activeLiveOrder.total)}</strong></p>
+                        <div className="bg-green-50 border border-green-200 p-2.5 rounded text-[11px] space-y-1">
+                          <p className="font-bold text-green-950">💵 TOTAL EN EFECTIVO A ABONAR AL CADETE:</p>
+                          <p className="text-green-900 text-sm font-extrabold">${Math.round(activeLiveOrder.total)} <span className="text-[10px] font-normal">(Incluye productos + envío)</span></p>
+                        </div>
                       )}
                     </div>
 
@@ -742,9 +744,9 @@
                       <div className="bg-white p-2.5 rounded-lg border border-orange-200 text-left text-xs space-y-2 shadow-sm">
                         <p className="font-bold text-orange-900">🔔 Notifica a cada comercio por WhatsApp:</p>
                         {activeLiveOrder.storesList.map((s, idx) => {
+                          const sSubtotal = s.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
                           const storeItemsList = s.items.map(i => `• ${i.quantity} ${i.unit || 'Unid.'} x ${i.name} ($${Math.round(i.price * i.quantity)})`).join('%0A');
-                          const storeSubtotal = s.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-                          const storeMsg = `🔔 *NUEVO PEDIDO - Catuna Pedidos*%0A%0A*Cliente:* ${encodeURIComponent(activeLiveOrder.customerName)}%0A*Pago:* ${encodeURIComponent(activeLiveOrder.paymentMethod)}%0A*Dirección:* ${encodeURIComponent(activeLiveOrder.address)}%0A%0A*Tus productos:*%0A${storeItemsList}%0A%0A*Subtotal a transferir:* $${Math.round(storeSubtotal)}`;
+                          const storeMsg = `🔔 *NUEVO PEDIDO - Catuna Pedidos*%0A%0A*Cliente:* ${encodeURIComponent(activeLiveOrder.customerName)}%0A*Pago:* ${encodeURIComponent(activeLiveOrder.paymentMethod)}%0A*Dirección:* ${encodeURIComponent(activeLiveOrder.address)}%0A%0A*Tus productos:*%0A${storeItemsList}%0A%0A*Subtotal a transferir:* $${Math.round(sSubtotal)}`;
 
                           return (
                             <div key={idx} className="flex justify-between items-center border-b pb-1 last:border-b-0">
@@ -788,14 +790,14 @@
 
                     {activeLiveOrder.paymentMethod === 'Transferencia' && activeLiveOrder.storesList && (
                       <div className="bg-amber-50 border border-amber-200 p-2 rounded text-[11px] text-left space-y-1 mt-2">
-                        <p className="font-bold text-amber-900">💳 Alias de los comercios para transferir solo los productos:</p>
+                        <p className="font-bold text-amber-900">💳 Alias para transferir solo el valor de los productos:</p>
                         {activeLiveOrder.storesList.map((s, idx) => {
                           const sSubtotal = s.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
                           return (
                             <div key={idx} className="flex justify-between items-center border-b pb-1 last:border-b-0">
                               <span><strong>{s.storeName} (${Math.round(sSubtotal)}):</strong> <span className="font-mono font-bold select-all">{s.alias || 'Consultar local'}</span></span>
                               {s.storePhone && (
-                                <a href={`https://wa.me/549${s.storePhone}?text=Hola,%20te%20envío%20el%20comprobante%20de%20mi%20pedido%20por%20valor%20de%20$${Math.round(sSubtotal)}:`} target="_blank" className="bg-green-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">
+                                <a href={`https://wa.me/549${s.storePhone}?text=Hola,%20te%20envío%20el%20comprobante%20de%20mi%20pedido%20por%20$${Math.round(sSubtotal)}:`} target="_blank" className="bg-green-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">
                                   💬 Comprobante
                                 </a>
                               )}
@@ -1310,7 +1312,6 @@
                       <button type="submit" disabled={isCompressing} className="w-full bg-green-600 text-white py-2 rounded font-bold">Guardar Producto</button>
                     </form>
 
-                    {/* HISTORIAL DE PRODUCTOS CARGADOS */}
                     <div className="border p-3 rounded bg-gray-50 space-y-2 mt-4">
                       <h3 className="font-bold text-gray-800 text-sm">📦 Tus Productos Cargados</h3>
                       {products.filter(p => p.storeId === loggedStore.id).length === 0 ? (
@@ -1492,7 +1493,6 @@
                       <button onClick={()=>setIsAdminLogged(false)} className="text-red-300 font-bold underline">Salir</button>
                     </div>
 
-                    {/* SECCIÓN REGISTRAR COMERCIO */}
                     <form onSubmit={handleCreateStore} className="border p-3 rounded bg-red-50 border-red-200 space-y-2">
                       <h3 className="font-bold text-red-900 text-sm">🏪 Registrar Nuevo Comercio</h3>
                       <input required placeholder="Nombre del Comercio" value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} className="w-full p-2 border rounded bg-white" />
@@ -1510,7 +1510,6 @@
                       </button>
                     </form>
 
-                    {/* SECCIÓN REGISTRAR CADETE */}
                     <form onSubmit={handleCreateCadete} className="border p-3 rounded bg-blue-50 border-blue-200 space-y-2">
                       <h3 className="font-bold text-blue-900 text-sm">🛵 Registrar Nuevo Cadete / Repartidor</h3>
                       <input required placeholder="Nombre Completo del Cadete" value={newCadeteName} onChange={e=>setNewCadeteName(e.target.value)} className="w-full p-2 border rounded bg-white" />
