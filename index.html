@@ -358,7 +358,6 @@
         }
       };
 
-      // CORRECCIÓN CLAVE: FILTRAR Y MARCAR SOLAMENTE LOS PEDIDOS DEL COMERCIO SELECCIONADO
       const handleResetStoreCommission = async (storeId, storeName) => {
         if (confirm(`¿Confirmas que el comercio "${storeName}" te abonó la comisión semanal? Esto pondrá su saldo deudor en $0.`)) {
           try {
@@ -514,7 +513,7 @@
       const handleCompleteOrder = async (orderId) => {
         try {
           await db.collection('orders').doc(orderId).update({ status: 'entregado' });
-          alert("¡Pedido entregado!");
+          alert("¡Pedido entregado con éxito!");
         } catch (err) {
           alert("Error al actualizar pedido: " + err.message);
         }
@@ -1355,7 +1354,7 @@
               </div>
             )}
 
-            {/* 3. VISTA CADETE */}
+            {/* 3. VISTA CADETE (RESTAURADA CON HISTORIAL Y ACUMULADOS) */}
             {currentTab === 'cadete' && (
               <div className="space-y-4">
                 {!loggedCadete ? (
@@ -1391,6 +1390,31 @@
                         {loggedCadete.isOnline ? '🟢 EN LÍNEA' : '🔴 DESCONECTADO'}
                       </button>
                     </div>
+
+                    {/* ESTADÍSTICAS Y ACUMULADOS DEL CADETE */}
+                    {(() => {
+                      const cadeteCompletedOrders = orders.filter(o => o.cadeteId === loggedCadete.id && o.status === 'entregado');
+                      const totalDeliveredCount = cadeteCompletedOrders.length;
+                      const totalEarnedFees = cadeteCompletedOrders.reduce((sum, o) => sum + Math.round(o.deliveryFee || BASE_DELIVERY_FEE), 0);
+
+                      return (
+                        <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg shadow-sm space-y-2">
+                          <h3 className="font-bold text-blue-900 text-sm flex items-center gap-1.5">
+                            📊 Mis Estadísticas y Ganancias
+                          </h3>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="bg-white p-2 rounded border border-blue-100 text-center">
+                              <p className="text-gray-500 text-[10px]">Envíos Entregados:</p>
+                              <p className="text-base font-extrabold text-blue-700">{totalDeliveredCount}</p>
+                            </div>
+                            <div className="bg-white p-2 rounded border border-blue-100 text-center">
+                              <p className="text-gray-500 text-[10px]">Total en Envíos Cobrados:</p>
+                              <p className="text-base font-extrabold text-green-700">${totalEarnedFees}</p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {!loggedCadete.isOnline ? (
                       <div className="bg-yellow-100 border border-yellow-400 text-yellow-800 p-3 rounded text-center font-bold">
@@ -1485,6 +1509,25 @@
                         })}
                       </>
                     )}
+
+                    {/* HISTORIAL DE PEDIDOS ENTREGADOS DEL CADETE */}
+                    <div className="border p-3 rounded bg-gray-50 space-y-2 mt-4">
+                      <h3 className="font-bold text-gray-800 text-sm">📜 Historial de Envíos Entregados</h3>
+                      {orders.filter(o => o.cadeteId === loggedCadete.id && o.status === 'entregado').length === 0 ? (
+                        <p className="text-gray-400 italic text-[11px]">Aún no has completado ningún envío.</p>
+                      ) : (
+                        orders.filter(o => o.cadeteId === loggedCadete.id && o.status === 'entregado').map(o => (
+                          <div key={o.id} className="bg-white p-2.5 rounded border space-y-1 shadow-sm">
+                            <div className="flex justify-between items-center">
+                              <span className="font-bold text-red-600">Pedido #{o.id.slice(-4).toUpperCase()}</span>
+                              <span className="text-[10px] bg-green-100 text-green-800 px-2 py-0.5 rounded font-bold">✅ Entregado</span>
+                            </div>
+                            <p className="text-gray-700 text-[11px]"><strong>Cliente:</strong> {o.customerName} ({o.address})</p>
+                            <p className="text-gray-600 text-[10px]">Ganancia por Envío: <strong className="text-green-700">${Math.round(o.deliveryFee || BASE_DELIVERY_FEE)}</strong></p>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1662,7 +1705,7 @@
                     </div>
 
                     <div className="border p-3 rounded bg-gray-50 space-y-2">
-                      <h3 className="font-bold text-gray-800 text-sm">🔒 Cadetes Registrados</h3>
+                      <h3 className="font-bold text-gray-800 text-sm">🛵 Cadetes Registrados</h3>
                       {cadetes.map(cadete => (
                         <div key={cadete.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
                           <div>
