@@ -473,6 +473,7 @@
         }
       };
 
+      // PASO 1: Cadete acepta el envío (Queda en espera de que el comercio le avise que esté listo)
       const handleAcceptOrder = async (orderId) => {
         if (!loggedCadete) return;
         if (!loggedCadete.isOnline) {
@@ -487,11 +488,22 @@
         try {
           const newBalance = (Number(loggedCadete.balance) || 0) - APP_FEE;
           await db.collection('cadetes').doc(loggedCadete.id).update({ balance: newBalance });
-          await db.collection('orders').doc(orderId).update({ status: 'en_camino', cadeteId: loggedCadete.id });
+          // Cambiamos a 'tomado_por_cadete' (esperando que el comercio confirme que está listo)
+          await db.collection('orders').doc(orderId).update({ status: 'tomado_por_cadete', cadeteId: loggedCadete.id });
           setLoggedCadete({ ...loggedCadete, balance: newBalance });
-          alert("¡Envío aceptado! Se le notificará al cliente en la app que su pedido ya va en camino.");
+          alert("¡Envío aceptado! Se le notificará al cliente que estás esperando a que el comercio tenga el pedido listo.");
         } catch (err) {
           alert("Error al aceptar envío: " + err.message);
+        }
+      };
+
+      // PASO 2: Cadete retira del local y marca que va en camino
+      const handleMarkAsOnTheWay = async (orderId) => {
+        try {
+          await db.collection('orders').doc(orderId).update({ status: 'en_camino' });
+          alert("¡Pedido retirado! Ahora el cliente ve en pantalla que vas en camino.");
+        } catch (err) {
+          alert("Error al marcar en camino: " + err.message);
         }
       };
 
@@ -688,7 +700,7 @@
             {currentTab === 'cliente' && (
               <div className="space-y-4">
                 
-                {/* TRACKING EN TIEMPO REAL CON CLARIFICACIÓN DE ESTADOS (TIRADO / EN CAMINO) */}
+                {/* TRACKING EN TIEMPO REAL CON ESTADOS EXACTOS */}
                 {activeLiveOrder && activeLiveOrder.status !== 'entregado' && activeLiveOrder.status !== 'cancelado_por_tiempo' && (
                   <div className={`p-4 rounded-xl border-2 text-center space-y-3 shadow-lg transition-all ${activeLiveOrder.status === 'en_camino' ? 'bg-green-50 border-green-500 animate-pulse' : 'bg-orange-50 border-orange-400'}`}>
                     
@@ -697,13 +709,17 @@
                       <div className="flex items-center justify-center gap-2">
                         <span className="text-xl">{activeLiveOrder.status === 'en_camino' ? '🛵' : '⏳'}</span>
                         <h3 className="font-extrabold text-xs text-gray-900 uppercase">
-                          {activeLiveOrder.status === 'en_camino' ? '¡El cadete ya aceptó y va en camino!' : 'Pedido tirado / enviado (Esperando Cadete)'}
+                          {activeLiveOrder.status === 'en_camino' 
+                            ? '¡Tu pedido va en camino!' 
+                            : activeLiveOrder.status === 'tomado_por_cadete'
+                            ? 'El cadete tomó el pedido y espera que esté listo'
+                            : 'Pedido enviado (Esperando cadete)'}
                         </h3>
                       </div>
                       <p className="text-[11px] text-gray-600">
                         {activeLiveOrder.status === 'en_camino' 
-                          ? '📢 Notificación en app: El repartidor retiró los productos y se dirige a tu domicilio.'
-                          : '📢 Notificación en app: Tu pedido fue registrado con éxito y está a la espera de que un cadete lo tome.'}
+                          ? '📢 El repartidor retiró los productos del local y se dirige a tu domicilio.'
+                          : '📢 Un cadete ya aceptó tu pedido y está atento a que el comercio confirme que está listo para retirar.'}
                       </p>
                     </div>
 
@@ -755,7 +771,7 @@
                       </div>
                     ) : (
                       <p className="text-[11px] text-orange-800 italic">
-                        Esperando que el repartidor acepte la ruta en la app...
+                        {activeCadete ? `Cadete asignado: ${activeCadete.name} (Esperando aviso de listo del comercio)` : 'Esperando que un cadete acepte el envío...'}
                       </p>
                     )}
 
@@ -1184,7 +1200,7 @@
                               <div className="flex justify-between font-bold">
                                 <span className="text-gray-800">Cliente: {o.customerName}</span>
                                 <span className={o.status === 'en_camino' ? 'text-blue-600' : 'text-orange-600'}>
-                                  {o.status === 'pendiente' ? '⏳ Esperando Cadete' : '🛵 En Camino'}
+                                  {o.status === 'pendiente' ? '⏳ Esperando Cadete' : o.status === 'tomado_por_cadete' ? '🛵 Cadete en camino al local / Esperando que esté listo' : '🛵 En Camino a Casa'}
                                 </span>
                               </div>
                               <p className="text-gray-600"><strong>Forma de Pago:</strong> <span className="text-red-600 font-bold">{o.paymentMethod || 'Efectivo'}</span></p>
@@ -1203,10 +1219,10 @@
                                 <div className="bg-blue-50 border border-blue-200 p-2 rounded space-y-2 mt-2">
                                   <p className="text-blue-900 font-bold">Cadete asignado: {assignedCadete.name} ({assignedCadete.vehicle})</p>
                                   <a 
-                                    href={`https://wa.me/549${assignedCadete.phone}?text=Hola%20${encodeURIComponent(assignedCadete.name)},%20el%20pedido%20de%20${encodeURIComponent(o.customerName)}%20ya%20está%20listo.`}
+                                    href={`https://wa.me/549${assignedCadete.phone}?text=Hola%20${encodeURIComponent(assignedCadete.name)},%20el%20pedido%20de%20${encodeURIComponent(o.customerName)}%20ya%20está%20listo%20para%20que%20lo%20retires.`}
                                     target="_blank"
                                     className="block w-full bg-green-600 text-white text-center font-bold py-1.5 rounded shadow hover:bg-green-700">
-                                    💬 Avisar al Cadete
+                                    💬 Avisar al Cadete que está LISTO
                                   </a>
                                 </div>
                               ) : (
@@ -1353,7 +1369,7 @@
                     ) : (
                       <>
                         <h3 className="font-bold text-gray-800 border-b pb-1">Pedidos en Plataforma:</h3>
-                        {orders.filter(o => o.status === 'pendiente' || (o.status === 'en_camino' && o.cadeteId === loggedCadete.id)).map(o => {
+                        {orders.filter(o => o.status === 'pendiente' || ((o.status === 'tomado_por_cadete' || o.status === 'en_camino') && o.cadeteId === loggedCadete.id)).map(o => {
                           const mapsUrl = o.coords 
                             ? `https://www.google.com/maps/search/?api=1&query=${o.coords.lat},${o.coords.lng}`
                             : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.address + ', Catuna, La Rioja')}`;
@@ -1413,6 +1429,17 @@
                                 <button onClick={()=>handleAcceptOrder(o.id)} className="w-full bg-green-700 text-white py-2 rounded font-bold shadow mt-2">
                                   Aceptar Envío (-${APP_FEE} comisión app)
                                 </button>
+                              )}
+
+                              {o.status === 'tomado_por_cadete' && (
+                                <div className="space-y-1.5 pt-2">
+                                  <button onClick={()=>handleMarkAsOnTheWay(o.id)} className="w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded font-bold shadow">
+                                    📦 Retirado / ¡Marcar que Voy en Camino! 🛵
+                                  </button>
+                                  <button onClick={()=>handleRejectOrder(o.id)} className="w-full bg-red-600 text-white py-1.5 rounded font-bold text-[11px]">
+                                    ❌ Rechazar / Liberar Envío
+                                  </button>
+                                </div>
                               )}
 
                               {o.status === 'en_camino' && (
