@@ -358,6 +358,7 @@
         }
       };
 
+      // CORRECCIÓN CLAVE: FILTRAR Y MARCAR SOLAMENTE LOS PEDIDOS DEL COMERCIO SELECCIONADO
       const handleResetStoreCommission = async (storeId, storeName) => {
         if (confirm(`¿Confirmas que el comercio "${storeName}" te abonó la comisión semanal? Esto pondrá su saldo deudor en $0.`)) {
           try {
@@ -366,12 +367,18 @@
               const hasStore = o.storeId === storeId || (o.storesInvolved && o.storesInvolved.includes(storeId));
               return hasStore && o.status === 'entregado' && !o.storeSettled;
             });
+
+            if (storeOrders.length === 0) {
+              alert("Este comercio no tiene comisiones pendientes por cobrar.");
+              return;
+            }
+
             storeOrders.forEach(o => {
               const ref = db.collection('orders').doc(o.id);
               batch.update(ref, { storeSettled: true });
             });
             await batch.commit();
-            alert("¡Comisión marcada como cobrada con éxito! Saldo del comercio saldado en $0.");
+            alert(`¡Comisión de "${storeName}" marcada como cobrada con éxito! Saldo del comercio saldado en $0.`);
           } catch (err) {
             alert("Error al saldar cuentas: " + err.message);
           }
@@ -698,7 +705,6 @@
                 {activeLiveOrder && activeLiveOrder.status !== 'entregado' && activeLiveOrder.status !== 'cancelado_por_tiempo' && (
                   <div className={`p-4 rounded-xl border-2 text-center space-y-3 shadow-lg transition-all ${activeLiveOrder.status === 'en_camino' ? 'bg-green-50 border-green-500 animate-pulse' : 'bg-orange-50 border-orange-400'}`}>
                     
-                    {/* NÚMERO DE PEDIDO DESTACADO */}
                     <div className="bg-red-600 text-white py-1.5 px-3 rounded-lg shadow font-extrabold text-sm flex justify-between items-center">
                       <span>🏷️ Código de Pedido:</span>
                       <span className="bg-white text-red-700 px-2.5 py-0.5 rounded font-mono text-base">#{activeLiveOrder.id.slice(-4).toUpperCase()}</span>
@@ -1218,7 +1224,6 @@
 
                           return (
                             <div key={o.id} className="border-2 border-red-200 p-3 rounded-lg bg-white shadow-sm space-y-2">
-                              {/* CÓDIGO DE PEDIDO EN VISTA COMERCIO */}
                               <div className="flex justify-between items-center bg-red-50 p-1.5 rounded border border-red-200">
                                 <span className="font-extrabold text-red-700">Pedido #{o.id.slice(-4).toUpperCase()}</span>
                                 <span className={o.status === 'en_camino' ? 'text-blue-600 font-bold' : 'text-orange-600 font-bold'}>
@@ -1403,7 +1408,6 @@
 
                           return (
                             <div key={o.id} className="border-2 border-blue-200 p-3 rounded-lg bg-gray-50 space-y-2.5">
-                              {/* CÓDIGO DE PEDIDO EN VISTA CADETE */}
                               <div className="flex justify-between items-center bg-blue-600 text-white p-1.5 rounded font-extrabold shadow">
                                 <span>📦 Pedido #{o.id.slice(-4).toUpperCase()}</span>
                                 <span className="bg-white text-blue-700 px-2 py-0.5 rounded text-[11px]">Envío: ${orderDeliveryFee}</span>
@@ -1658,7 +1662,7 @@
                     </div>
 
                     <div className="border p-3 rounded bg-gray-50 space-y-2">
-                      <h3 className="font-bold text-gray-800 text-sm">🛵 Cadetes Registrados</h3>
+                      <h3 className="font-bold text-gray-800 text-sm">🔒 Cadetes Registrados</h3>
                       {cadetes.map(cadete => (
                         <div key={cadete.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
                           <div>
