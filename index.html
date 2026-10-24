@@ -473,7 +473,6 @@
         }
       };
 
-      // PASO 1: Cadete acepta el pedido (Notifica al cliente que el cadete lo aceptó y espera que esté listo)
       const handleAcceptOrder = async (orderId) => {
         if (!loggedCadete) return;
         if (!loggedCadete.isOnline) {
@@ -496,7 +495,6 @@
         }
       };
 
-      // PASO 2: El comercio avisa al cadete y el cadete marca que YA RETIRÓ (Pasa a 'en_camino' para el cliente)
       const handleMarkAsOnTheWay = async (orderId) => {
         try {
           await db.collection('orders').doc(orderId).update({ status: 'en_camino' });
@@ -699,11 +697,10 @@
             {currentTab === 'cliente' && (
               <div className="space-y-4">
                 
-                {/* TRACKING EN TIEMPO REAL CON ESTADOS EXACTOS */}
+                {/* TRACKING EN TIEMPO REAL CON EXPLICACIÓN DE PAGO POR TRANSFERENCIA */}
                 {activeLiveOrder && activeLiveOrder.status !== 'entregado' && activeLiveOrder.status !== 'cancelado_por_tiempo' && (
                   <div className={`p-4 rounded-xl border-2 text-center space-y-3 shadow-lg transition-all ${activeLiveOrder.status === 'en_camino' ? 'bg-green-50 border-green-500 animate-pulse' : 'bg-orange-50 border-orange-400'}`}>
                     
-                    {/* AVISO CLARO DEL ESTADO ACTUAL */}
                     <div className="bg-white p-2.5 rounded-lg border shadow-sm space-y-1">
                       <div className="flex items-center justify-center gap-2">
                         <span className="text-xl">{activeLiveOrder.status === 'en_camino' ? '🛵' : '⏳'}</span>
@@ -724,9 +721,22 @@
                       </p>
                     </div>
 
-                    <p className="text-xs text-gray-700">
-                      Total a pagar: <strong>${activeLiveOrder.total}</strong> ({activeLiveOrder.paymentMethod})
-                    </p>
+                    <div className="bg-gray-50 p-2.5 rounded border text-xs text-left space-y-1">
+                      <p className="text-gray-700">Forma de pago: <strong>{activeLiveOrder.paymentMethod}</strong></p>
+                      {activeLiveOrder.paymentMethod === 'Transferencia' ? (
+                        <div className="bg-blue-50 border border-blue-200 p-2 rounded text-[11px] space-y-1 mt-1">
+                          <p className="font-bold text-blue-950">💡 Aclaración sobre el pago:</p>
+                          <p className="text-blue-900">
+                            • Solo debes transferir el valor de los productos: <strong>${Math.round(activeLiveOrder.subtotal || 0)}</strong> al alias del comercio.
+                          </p>
+                          <p className="text-blue-900">
+                            • El costo de envío (<strong>${Math.round(activeLiveOrder.deliveryFee || BASE_DELIVERY_FEE)}</strong>) se le paga <strong>aparte y en efectivo al cadete</strong> al recibir tu pedido.
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-gray-700">Total general a abonar al cadete (Productos + Envío): <strong>${Math.round(activeLiveOrder.total)}</strong></p>
+                      )}
+                    </div>
 
                     {activeLiveOrder.storesList && (
                       <div className="bg-white p-2.5 rounded-lg border border-orange-200 text-left text-xs space-y-2 shadow-sm">
@@ -734,7 +744,7 @@
                         {activeLiveOrder.storesList.map((s, idx) => {
                           const storeItemsList = s.items.map(i => `• ${i.quantity} ${i.unit || 'Unid.'} x ${i.name} ($${Math.round(i.price * i.quantity)})`).join('%0A');
                           const storeSubtotal = s.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-                          const storeMsg = `🔔 *NUEVO PEDIDO - Catuna Pedidos*%0A%0A*Cliente:* ${encodeURIComponent(activeLiveOrder.customerName)}%0A*Pago:* ${encodeURIComponent(activeLiveOrder.paymentMethod)}%0A*Dirección:* ${encodeURIComponent(activeLiveOrder.address)}%0A%0A*Tus productos:*%0A${storeItemsList}%0A%0A*Subtotal:* $${Math.round(storeSubtotal)}`;
+                          const storeMsg = `🔔 *NUEVO PEDIDO - Catuna Pedidos*%0A%0A*Cliente:* ${encodeURIComponent(activeLiveOrder.customerName)}%0A*Pago:* ${encodeURIComponent(activeLiveOrder.paymentMethod)}%0A*Dirección:* ${encodeURIComponent(activeLiveOrder.address)}%0A%0A*Tus productos:*%0A${storeItemsList}%0A%0A*Subtotal a transferir:* $${Math.round(storeSubtotal)}`;
 
                           return (
                             <div key={idx} className="flex justify-between items-center border-b pb-1 last:border-b-0">
@@ -778,17 +788,20 @@
 
                     {activeLiveOrder.paymentMethod === 'Transferencia' && activeLiveOrder.storesList && (
                       <div className="bg-amber-50 border border-amber-200 p-2 rounded text-[11px] text-left space-y-1 mt-2">
-                        <p className="font-bold text-amber-900">💳 Alias para transferir productos:</p>
-                        {activeLiveOrder.storesList.map((s, idx) => (
-                          <div key={idx} className="flex justify-between items-center border-b pb-1 last:border-b-0">
-                            <span><strong>{s.storeName}:</strong> <span className="font-mono font-bold select-all">{s.alias || 'Consultar local'}</span></span>
-                            {s.storePhone && (
-                              <a href={`https://wa.me/549${s.storePhone}?text=Hola,%20te%20envío%20el%20comprobante%20de%20mi%20pedido:`} target="_blank" className="bg-green-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">
-                                💬 Comprobante
-                              </a>
-                            )}
-                          </div>
-                        ))}
+                        <p className="font-bold text-amber-900">💳 Alias de los comercios para transferir solo los productos:</p>
+                        {activeLiveOrder.storesList.map((s, idx) => {
+                          const sSubtotal = s.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+                          return (
+                            <div key={idx} className="flex justify-between items-center border-b pb-1 last:border-b-0">
+                              <span><strong>{s.storeName} (${Math.round(sSubtotal)}):</strong> <span className="font-mono font-bold select-all">{s.alias || 'Consultar local'}</span></span>
+                              {s.storePhone && (
+                                <a href={`https://wa.me/549${s.storePhone}?text=Hola,%20te%20envío%20el%20comprobante%20de%20mi%20pedido%20por%20valor%20de%20$${Math.round(sSubtotal)}:`} target="_blank" className="bg-green-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">
+                                  💬 Comprobante
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
 
@@ -1032,7 +1045,7 @@
                           <span className="font-bold">${calculatedDeliveryFee}</span>
                         </div>
                         <div className="flex justify-between text-gray-900 font-extrabold text-sm pt-1 border-t border-gray-300">
-                          <span>TOTAL A PAGAR:</span>
+                          <span>TOTAL GENERAL:</span>
                           <span className="text-red-600">${Math.round(cartSubtotal + calculatedDeliveryFee)}</span>
                         </div>
                       </div>
@@ -1071,13 +1084,13 @@
                               type="button"
                               onClick={() => setPaymentMethod('Efectivo')}
                               className={`py-2 rounded font-bold text-xs border ${paymentMethod === 'Efectivo' ? 'bg-green-600 text-white border-green-700 shadow' : 'bg-white text-gray-700 border-gray-300'}`}>
-                              💵 Efectivo (al cadete)
+                              💵 Efectivo (todo al cadete)
                             </button>
                             <button
                               type="button"
                               onClick={() => setPaymentMethod('Transferencia')}
                               className={`py-2 rounded font-bold text-xs border ${paymentMethod === 'Transferencia' ? 'bg-blue-600 text-white border-blue-700 shadow' : 'bg-white text-gray-700 border-gray-300'}`}>
-                              💳 Transferencia (Mercado Pago)
+                              💳 Transferencia (Productos al local + Envío al cadete)
                             </button>
                           </div>
                         </div>
@@ -1402,11 +1415,11 @@
                                 <p>💳 Forma de Pago: <span className="text-red-600">{o.paymentMethod || 'Efectivo'}</span></p>
                                 {o.paymentMethod === 'Efectivo' ? (
                                   <p className="text-xs text-green-800">
-                                    💵 Cobrar en mano al cliente: <strong>${Math.round(o.total)}</strong> (Productos: ${Math.round(o.subtotal)} + Envío: ${orderDeliveryFee})
+                                    💵 Cobrar en mano al cliente (Productos + Envío): <strong>${Math.round(o.total)}</strong>
                                   </p>
                                 ) : (
                                   <p className="text-xs text-blue-800">
-                                    💳 Cliente ya transfirió productos al local. Cobrar solo el Envío en mano: <strong>${orderDeliveryFee}</strong>
+                                    💳 Cliente ya transfirió los productos al local. Cobrar <strong>solo el Envío en efectivo</strong>: <strong>${orderDeliveryFee}</strong>
                                   </p>
                                 )}
                               </div>
