@@ -698,6 +698,12 @@
                 {activeLiveOrder && activeLiveOrder.status !== 'entregado' && activeLiveOrder.status !== 'cancelado_por_tiempo' && (
                   <div className={`p-4 rounded-xl border-2 text-center space-y-3 shadow-lg transition-all ${activeLiveOrder.status === 'en_camino' ? 'bg-green-50 border-green-500 animate-pulse' : 'bg-orange-50 border-orange-400'}`}>
                     
+                    {/* NÚMERO DE PEDIDO DESTACADO */}
+                    <div className="bg-red-600 text-white py-1.5 px-3 rounded-lg shadow font-extrabold text-sm flex justify-between items-center">
+                      <span>🏷️ Código de Pedido:</span>
+                      <span className="bg-white text-red-700 px-2.5 py-0.5 rounded font-mono text-base">#{activeLiveOrder.id.slice(-4).toUpperCase()}</span>
+                    </div>
+
                     <div className="bg-white p-2.5 rounded-lg border shadow-sm space-y-1">
                       <div className="flex items-center justify-center gap-2">
                         <span className="text-xl">{activeLiveOrder.status === 'en_camino' ? '🛵' : '⏳'}</span>
@@ -718,7 +724,6 @@
                       </p>
                     </div>
 
-                    {/* BLOQUE DE PAGOS CORREGIDO Y CLARO */}
                     <div className="bg-white p-3 rounded-lg border border-orange-200 text-left text-xs space-y-2 shadow-sm">
                       <p className="font-bold text-gray-800">Forma de Pago: <span className="text-red-600">{activeLiveOrder.paymentMethod}</span></p>
                       
@@ -746,7 +751,7 @@
                         {activeLiveOrder.storesList.map((s, idx) => {
                           const sSubtotal = s.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
                           const storeItemsList = s.items.map(i => `• ${i.quantity} ${i.unit || 'Unid.'} x ${i.name} ($${Math.round(i.price * i.quantity)})`).join('%0A');
-                          const storeMsg = `🔔 *NUEVO PEDIDO - Catuna Pedidos*%0A%0A*Cliente:* ${encodeURIComponent(activeLiveOrder.customerName)}%0A*Pago:* ${encodeURIComponent(activeLiveOrder.paymentMethod)}%0A*Dirección:* ${encodeURIComponent(activeLiveOrder.address)}%0A%0A*Tus productos:*%0A${storeItemsList}%0A%0A*Subtotal a transferir:* $${Math.round(sSubtotal)}`;
+                          const storeMsg = `🔔 *NUEVO PEDIDO #${activeLiveOrder.id.slice(-4).toUpperCase()} - Catuna Pedidos*%0A%0A*Cliente:* ${encodeURIComponent(activeLiveOrder.customerName)}%0A*Pago:* ${encodeURIComponent(activeLiveOrder.paymentMethod)}%0A*Dirección:* ${encodeURIComponent(activeLiveOrder.address)}%0A%0A*Tus productos:*%0A${storeItemsList}%0A%0A*Subtotal a transferir:* $${Math.round(sSubtotal)}`;
 
                           return (
                             <div key={idx} className="flex justify-between items-center border-b pb-1 last:border-b-0">
@@ -776,7 +781,7 @@
                         <p className="text-gray-600">Vehículo: <strong>{activeCadete.vehicle}</strong></p>
                         
                         <a 
-                          href={`https://wa.me/549${activeCadete.phone}?text=Hola%20${encodeURIComponent(activeCadete.name)},%20te%20escribo%20por%20mi%20pedido%20en%20Catuna%20Pedidos.`}
+                          href={`https://wa.me/549${activeCadete.phone}?text=Hola%20${encodeURIComponent(activeCadete.name)},%20te%20escribo%20por%20mi%20pedido%20%23${activeLiveOrder.id.slice(-4).toUpperCase()}.`}
                           target="_blank"
                           className="block w-full bg-green-600 hover:bg-green-700 text-white font-bold text-center py-1.5 rounded shadow mt-1">
                           💬 Contactar al Cadete por WhatsApp
@@ -797,7 +802,7 @@
                             <div key={idx} className="flex justify-between items-center border-b pb-1 last:border-b-0">
                               <span><strong>{s.storeName} (${Math.round(sSubtotal)}):</strong> <span className="font-mono font-bold select-all">{s.alias || 'Consultar local'}</span></span>
                               {s.storePhone && (
-                                <a href={`https://wa.me/549${s.storePhone}?text=Hola,%20te%20envío%20el%20comprobante%20de%20mi%20pedido%20por%20$${Math.round(sSubtotal)}:`} target="_blank" className="bg-green-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">
+                                <a href={`https://wa.me/549${s.storePhone}?text=Hola,%20te%20envío%20el%20comprobante%20de%20mi%20pedido%20%23${activeLiveOrder.id.slice(-4).toUpperCase()}%20por%20$${Math.round(sSubtotal)}:`} target="_blank" className="bg-green-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">
                                   💬 Comprobante
                                 </a>
                               )}
@@ -1212,12 +1217,17 @@
                           const myItems = o.storesList ? (o.storesList.find(s => s.storeId === loggedStore.id)?.items || []) : (o.items || []);
 
                           return (
-                            <div key={o.id} className="border p-3 rounded bg-white shadow-sm space-y-2">
-                              <div className="flex justify-between font-bold">
-                                <span className="text-gray-800">Cliente: {o.customerName}</span>
-                                <span className={o.status === 'en_camino' ? 'text-blue-600' : 'text-orange-600'}>
-                                  {o.status === 'pendiente' ? '⏳ Esperando Cadete' : o.status === 'tomado_por_cadete' ? '🛵 Cadete asignado (Esperando que esté listo)' : '🛵 En Camino a Casa'}
+                            <div key={o.id} className="border-2 border-red-200 p-3 rounded-lg bg-white shadow-sm space-y-2">
+                              {/* CÓDIGO DE PEDIDO EN VISTA COMERCIO */}
+                              <div className="flex justify-between items-center bg-red-50 p-1.5 rounded border border-red-200">
+                                <span className="font-extrabold text-red-700">Pedido #{o.id.slice(-4).toUpperCase()}</span>
+                                <span className={o.status === 'en_camino' ? 'text-blue-600 font-bold' : 'text-orange-600 font-bold'}>
+                                  {o.status === 'pendiente' ? '⏳ Esperando Cadete' : o.status === 'tomado_por_cadete' ? '🛵 Cadete asignado (Esperando listo)' : '🛵 En Camino'}
                                 </span>
+                              </div>
+
+                              <div className="flex justify-between font-bold text-gray-800">
+                                <span>Cliente: {o.customerName}</span>
                               </div>
                               <p className="text-gray-600"><strong>Forma de Pago:</strong> <span className="text-red-600 font-bold">{o.paymentMethod || 'Efectivo'}</span></p>
                               <p className="text-gray-600"><strong>Dirección:</strong> {o.address}</p>
@@ -1235,7 +1245,7 @@
                                 <div className="bg-blue-50 border border-blue-200 p-2 rounded space-y-2 mt-2">
                                   <p className="text-blue-900 font-bold">Cadete asignado: {assignedCadete.name} ({assignedCadete.vehicle})</p>
                                   <a 
-                                    href={`https://wa.me/549${assignedCadete.phone}?text=Hola%20${encodeURIComponent(assignedCadete.name)},%20el%20pedido%20de%20${encodeURIComponent(o.customerName)}%20ya%20está%20listo%20para%20que%20lo%20retires.`}
+                                    href={`https://wa.me/549${assignedCadete.phone}?text=Hola%20${encodeURIComponent(assignedCadete.name)},%20el%20pedido%20%23${o.id.slice(-4).toUpperCase()}%20de%20${encodeURIComponent(o.customerName)}%20ya%20está%20listo%20para%20que%20lo%20retires.`}
                                     target="_blank"
                                     className="block w-full bg-green-600 text-white text-center font-bold py-1.5 rounded shadow hover:bg-green-700">
                                     💬 Avisar al Cadete que está LISTO
@@ -1392,12 +1402,11 @@
                           const orderDeliveryFee = Math.round(o.deliveryFee || BASE_DELIVERY_FEE);
 
                           return (
-                            <div key={o.id} className="border p-3 rounded bg-gray-50 space-y-2.5">
-                              <div className="flex justify-between font-bold border-b pb-1">
-                                <span className="text-red-600">Pedido Multi-Local</span>
-                                <span className="text-green-700 bg-green-100 px-2 py-0.5 rounded border border-green-300">
-                                  🛵 Tu Ganancia Envío: ${orderDeliveryFee}
-                                </span>
+                            <div key={o.id} className="border-2 border-blue-200 p-3 rounded-lg bg-gray-50 space-y-2.5">
+                              {/* CÓDIGO DE PEDIDO EN VISTA CADETE */}
+                              <div className="flex justify-between items-center bg-blue-600 text-white p-1.5 rounded font-extrabold shadow">
+                                <span>📦 Pedido #{o.id.slice(-4).toUpperCase()}</span>
+                                <span className="bg-white text-blue-700 px-2 py-0.5 rounded text-[11px]">Envío: ${orderDeliveryFee}</span>
                               </div>
                               
                               <div className="bg-amber-50 border border-amber-200 p-2 rounded space-y-1">
@@ -1427,7 +1436,7 @@
 
                               <div className="grid grid-cols-2 gap-2 pt-1">
                                 <a 
-                                  href={`https://wa.me/549${o.customerPhone}?text=Hola%20${encodeURIComponent(o.customerName)},%20voy%20en%20camino%20con%20tu%20pedido.`} 
+                                  href={`https://wa.me/549${o.customerPhone}?text=Hola%20${encodeURIComponent(o.customerName)},%20voy%20en%20camino%20con%20tu%20pedido%20%23${o.id.slice(-4).toUpperCase()}.`} 
                                   target="_blank" 
                                   className="bg-green-600 text-white py-1.5 px-2 rounded text-center font-bold">
                                   💬 WhatsApp
