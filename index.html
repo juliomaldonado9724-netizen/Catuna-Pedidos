@@ -41,7 +41,6 @@
     function App() {
       const [currentTab, setCurrentTab] = useState('cliente');
 
-      const STORE_COMMISSION_PERCENT = 0.05; // 5% comisión
       const APP_FEE = 300; 
       const BASE_DELIVERY_FEE = 1500; 
 
@@ -60,6 +59,11 @@
       const [chatMessages, setChatMessages] = useState([]);
       const [newMessageText, setNewMessageText] = useState('');
       const chatEndRef = useRef(null);
+
+      // Calificaciones
+      const [ratingStore, setRatingStore] = useState(5);
+      const [ratingCadete, setRatingCadete] = useState(5);
+      const [reviewSubmitted, setReviewSubmitted] = useState(false);
 
       useEffect(() => {
         const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
@@ -159,7 +163,7 @@
       const [loggedStore, setLoggedStore] = useState(null);
       const [loggedCadete, setLoggedCadete] = useState(null);
 
-      // Estados de Productos y Promociones por horas
+      // Estados de Productos y Promociones
       const [prodName, setProdName] = useState('');
       const [prodPrice, setProdPrice] = useState('');
       const [prodUnit, setProdUnit] = useState('Unidad');
@@ -241,18 +245,6 @@
         } catch (err) { alert("Error: " + err.message); }
       };
 
-      const handleToggleStoreSuspension = async (storeId, currentStatus) => {
-        try { await db.collection('stores').doc(storeId).update({ isSuspended: !currentStatus }); alert("Estado actualizado."); } 
-        catch (err) { alert("Error: " + err.message); }
-      };
-
-      const handleDeleteStore = async (storeId, storeName) => {
-        if (confirm(`¿Eliminar permanentemente "${storeName}"?`)) {
-          try { await db.collection('stores').doc(storeId).delete(); alert("Comercio eliminado."); } 
-          catch (err) { alert("Error: " + err.message); }
-        }
-      };
-
       const handleCreateCadete = async (e) => {
         e.preventDefault();
         try {
@@ -300,18 +292,15 @@
         } else { alert("Usuario o clave incorrectos"); }
       };
 
-      // RESTAURADO: Abrir y Cerrar Comercio
       const toggleStoreOpenStatus = async () => {
         if (!loggedStore) return;
         const updatedStatus = !loggedStore.isOpen;
         try {
           await db.collection('stores').doc(loggedStore.id).update({ isOpen: updatedStatus });
           setLoggedStore({ ...loggedStore, isOpen: updatedStatus });
-          alert(`Comercio marcado como ${updatedStatus ? 'ABIERTO 🟢' : 'CERRADO 🔴'}`);
         } catch (err) { alert("Error: " + err.message); }
       };
 
-      // RESTAURADO: Carga de Ofertas y Promociones con duración por horas (6h, 24h, 48h)
       const handleAddProduct = async (e) => {
         e.preventDefault();
         if (!loggedStore || isCompressing) return;
@@ -374,6 +363,14 @@
         catch (err) { alert("Error: " + err.message); }
       };
 
+      const handleRateOrder = async (orderId) => {
+        try {
+          await db.collection('orders').doc(orderId).update({ rated: true, ratingStore, ratingCadete });
+          setReviewSubmitted(true);
+          alert("¡Gracias por calificar el servicio de Catuna Pedidos!");
+        } catch (err) { alert("Error al enviar calificación: " + err.message); }
+      };
+
       const addToCart = (product, store) => {
         const onlineCadetesCount = cadetes.filter(c => c.isOnline && !c.isSuspended).length;
         if (onlineCadetesCount === 0) { alert("⚠️ No hay cadetes en línea disponibles."); return; }
@@ -419,12 +416,13 @@
             storesInvolved: storesInvolvedIds, storesList, customerName: custName, customerPhone: custPhone,
             address: custAddress, coords: custCoords || null, paymentMethod, items: cart,
             deliveryFee: calculatedDeliveryFee, subtotal: cartSubtotal, total: cartSubtotal + calculatedDeliveryFee,
-            status: 'pendiente', cadeteId: null, storeSettled: false,
+            status: 'pendiente', cadeteId: null, storeSettled: false, rated: false,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
 
           setLastOrderId(docRef.id);
           setCart([]); setIsCartOpen(false); setCustName(''); setCustPhone(''); setCustAddress(''); setCustCoords(null); setPaymentMethod('Efectivo');
+          setReviewSubmitted(false);
           alert("¡Pedido registrado con éxito!");
         } catch (err) { alert("Error al enviar pedido: " + err.message); }
       };
@@ -471,8 +469,8 @@
             {currentTab === 'cliente' && (
               <div className="space-y-4">
                 
-                {activeLiveOrder && activeLiveOrder.status !== 'entregado' && (
-                  <div className={`p-4 rounded-xl border-2 text-center space-y-3 shadow-lg ${activeLiveOrder.status === 'en_camino' ? 'bg-green-50 border-green-500 animate-pulse' : 'bg-orange-50 border-orange-400'}`}>
+                {activeLiveOrder && (
+                  <div className={`p-4 rounded-xl border-2 text-center space-y-3 shadow-lg ${activeLiveOrder.status === 'entregado' ? 'bg-blue-50 border-blue-400' : activeLiveOrder.status === 'en_camino' ? 'bg-green-50 border-green-500 animate-pulse' : 'bg-orange-50 border-orange-400'}`}>
                     <div className="bg-red-600 text-white py-1.5 px-3 rounded-lg shadow font-extrabold text-sm flex justify-between items-center">
                       <span>🏷️ Pedido:</span>
                       <span className="bg-white text-red-700 px-2.5 py-0.5 rounded font-mono text-base">#{activeLiveOrder.id.slice(-4).toUpperCase()}</span>
@@ -480,15 +478,50 @@
 
                     <div className="bg-white p-2.5 rounded-lg border shadow-sm space-y-1">
                       <h3 className="font-extrabold text-xs text-gray-900 uppercase">
-                        {activeLiveOrder.status === 'en_camino' ? '¡Tu pedido va en camino!' : activeLiveOrder.status === 'tomado_por_cadete' ? 'Cadete asignado (En preparación)' : 'Pedido registrado (Esperando cadete)'}
+                        {activeLiveOrder.status === 'entregado' ? '¡Pedido Entregado con Éxito!' : activeLiveOrder.status === 'en_camino' ? '¡Tu pedido va en camino!' : activeLiveOrder.status === 'tomado_por_cadete' ? 'Cadete asignado (En preparación)' : 'Pedido registrado (Esperando cadete)'}
                       </h3>
                     </div>
 
-                    <button 
-                      onClick={() => setActiveChatOrder(activeLiveOrder)} 
-                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2 rounded-lg shadow flex items-center justify-center gap-2 text-xs">
-                      💬 Abrir Chat del Pedido (En Vivo)
-                    </button>
+                    {activeLiveOrder.status !== 'entregado' && (
+                      <button 
+                        onClick={() => setActiveChatOrder(activeLiveOrder)} 
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2 rounded-lg shadow flex items-center justify-center gap-2 text-xs">
+                        💬 Abrir Chat del Pedido (En Vivo)
+                      </button>
+                    )}
+
+                    {/* SECCIÓN DE CALIFICACIÓN POR ESTRELLAS */}
+                    {activeLiveOrder.status === 'entregado' && !activeLiveOrder.rated && !reviewSubmitted && (
+                      <div className="bg-white p-3 rounded-lg border border-blue-200 space-y-3 text-xs">
+                        <p className="font-bold text-gray-800">⭐ Califica tu experiencia:</p>
+                        
+                        <div>
+                          <p className="text-[10px] text-gray-600">Calificar Comercio:</p>
+                          <div className="flex justify-center gap-1 text-base">
+                            {[1, 2, 3, 4, 5].map(star => (
+                              <button key={star} type="button" onClick={()=>setRatingStore(star)} className={star <= ratingStore ? 'text-amber-500 font-bold' : 'text-gray-300'}>★</button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-[10px] text-gray-600">Calificar Repartidor:</p>
+                          <div className="flex justify-center gap-1 text-base">
+                            {[1, 2, 3, 4, 5].map(star => (
+                              <button key={star} type="button" onClick={()=>setRatingCadete(star)} className={star <= ratingCadete ? 'text-amber-500 font-bold' : 'text-gray-300'}>★</button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <button onClick={() => handleRateOrder(activeLiveOrder.id)} className="w-full bg-blue-600 text-white font-bold py-1.5 rounded shadow">
+                          Enviar Calificación
+                        </button>
+                      </div>
+                    )}
+
+                    {(activeLiveOrder.rated || reviewSubmitted) && activeLiveOrder.status === 'entregado' && (
+                      <p className="text-xs font-bold text-green-700">✅ ¡Gracias por tu calificación!</p>
+                    )}
                   </div>
                 )}
 
@@ -599,7 +632,6 @@
                   </form>
                 ) : (
                   <div className="space-y-4">
-                    {/* RESTAURADO: ESTADO ABIERTO / CERRADO */}
                     <div className="flex justify-between items-center bg-gray-100 p-3 rounded border">
                       <div>
                         <span className="font-bold text-gray-800 text-sm">{loggedStore.name}</span>
@@ -628,7 +660,6 @@
                       ))}
                     </div>
 
-                    {/* RESTAURADO: FORMULARIO CON PROMOCIONES Y OFERTAS TEMPORALES */}
                     <form onSubmit={handleAddProduct} className="border p-3 rounded bg-gray-50 space-y-2 mt-4">
                       <h3 className="font-bold text-gray-800 text-sm">➕ Cargar Producto / Oferta</h3>
                       <input required placeholder="Nombre del Producto / Combo" value={prodName} onChange={e=>setProdName(e.target.value)} className="w-full p-2 border rounded" />
@@ -662,7 +693,6 @@
                       </button>
                     </form>
 
-                    {/* RESTAURADO: LISTA DE PRODUCTOS DEL COMERCIO */}
                     <div className="space-y-2 pt-2">
                       <h3 className="font-bold text-gray-800">Mi Catálogo Cargado:</h3>
                       {products.filter(p => p.storeId === loggedStore.id).map(p => (
@@ -810,6 +840,24 @@
                         {globalAnnouncement && <button type="button" onClick={handleClearAnnouncement} className="bg-red-600 text-white px-3 py-1.5 rounded font-bold">Borrar</button>}
                       </div>
                     </form>
+
+                    {/* HISTORIAL GENERAL DE PEDIDOS PARA EL ADMIN */}
+                    <div className="border p-3 rounded bg-gray-50 space-y-2">
+                      <h3 className="font-bold text-gray-800 text-sm">📋 Historial General de Pedidos</h3>
+                      {orders.length === 0 ? (
+                        <p className="text-gray-400 italic">No hay pedidos registrados aún.</p>
+                      ) : (
+                        orders.map(o => (
+                          <div key={o.id} className="bg-white p-2 rounded border space-y-1">
+                            <div className="flex justify-between font-bold">
+                              <span>#{o.id.slice(-4).toUpperCase()} - {o.customerName}</span>
+                              <span className={o.status === 'entregado' ? 'text-green-600' : 'text-orange-500'}>{o.status}</span>
+                            </div>
+                            <p className="text-[10px] text-gray-500">Total: ${Math.round(o.total)} | Pago: {o.paymentMethod}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
