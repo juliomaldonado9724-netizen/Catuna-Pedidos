@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Delivery Catuna</title>
+  <title>Catuna Pedidos</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- React & ReactDOM -->
@@ -22,7 +22,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useRef } = React;
 
     const firebaseConfig = {
       apiKey: "AIzaSyDVtOX-_9idM9YiNAem5fc1SiGZLjypJ-Y",
@@ -47,7 +47,7 @@
         banco: "Mercado Pago"
       };
 
-      const STORE_COMMISSION_PERCENT = 0.05; // 5% de comisión
+      const STORE_COMMISSION_PERCENT = 0.05; // 5% comisión
       const APP_FEE = 300; 
       const BASE_DELIVERY_FEE = 1500; 
 
@@ -60,6 +60,12 @@
       const [searchTerm, setSearchTerm] = useState('');
       const [currentTime, setCurrentTime] = useState(Date.now());
       const [isCartOpen, setIsCartOpen] = useState(false);
+
+      // Estado para Modal de Chat Interno
+      const [activeChatOrder, setActiveChatOrder] = useState(null);
+      const [chatMessages, setChatMessages] = useState([]);
+      const [newMessageText, setNewMessageText] = useState('');
+      const chatEndRef = useRef(null);
 
       useEffect(() => {
         const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
@@ -86,35 +92,52 @@
         });
 
         return () => {
-          unsubStores();
-          unsubProducts();
-          unsubCadetes();
-          unsubOrders();
-          unsubConfig();
+          unsubStores(); unsubProducts(); unsubCadetes(); unsubOrders(); unsubConfig();
         };
       }, []);
 
+      // Listener de Chat en Vivo cuando hay un pedido activo seleccionado
       useEffect(() => {
-        const interval = setInterval(async () => {
-          const now = Date.now();
-          for (const order of orders) {
-            if (order.status === 'pendiente' && order.createdAt) {
-              const orderTime = order.createdAt.toMillis ? order.createdAt.toMillis() : order.createdAt.seconds * 1000;
-              const diffMinutes = (now - orderTime) / (1000 * 60);
-              
-              if (diffMinutes > 10) {
-                try {
-                  await db.collection('orders').doc(order.id).update({ status: 'cancelado_por_tiempo' });
-                } catch (err) {
-                  console.error("Error al expirar pedido automático:", err);
-                }
-              }
-            }
-          }
-        }, 30000);
+        if (!activeChatOrder) return;
+        const unsubChat = db.collection('orders').doc(activeChatOrder.id)
+          .collection('messages').orderBy('createdAt', 'asc')
+          .onSnapshot(snapshot => {
+            setChatMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          });
+        return () => unsubChat();
+      }, [activeChatOrder]);
 
-        return () => clearInterval(interval);
-      }, [orders]);
+      useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, [chatMessages]);
+
+      const sendMessage = async (e) => {
+        e.preventDefault();
+        if (!newMessageText.trim() || !activeChatOrder) return;
+
+        let senderRole = 'Cliente';
+        let senderName = activeChatOrder.customerName || 'Cliente';
+
+        if (currentTab === 'comercio' && loggedStore) {
+          senderRole = 'Comercio';
+          senderName = loggedStore.name;
+        } else if (currentTab === 'cadete' && loggedCadete) {
+          senderRole = 'Cadete';
+          senderName = loggedCadete.name;
+        }
+
+        try {
+          await db.collection('orders').doc(activeChatOrder.id).collection('messages').add({
+            senderRole,
+            senderName,
+            text: newMessageText.trim(),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          setNewMessageText('');
+        } catch (err) {
+          alert("Error al enviar mensaje: " + err.message);
+        }
+      };
 
       const [adminPass, setAdminPass] = useState('');
       const [isAdminLogged, setIsAdminLogged] = useState(false);
@@ -158,7 +181,6 @@
       const handleImageUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
         setIsCompressing(true);
         const reader = new FileReader();
         reader.onload = (event) => {
@@ -167,28 +189,16 @@
             const canvas = document.createElement('canvas');
             const MAX_WIDTH = 500;
             const MAX_HEIGHT = 500;
-            let width = img.width;
-            let height = img.height;
-
+            let width = img.width, height = img.height;
             if (width > height) {
-              if (width > MAX_WIDTH) {
-                height *= MAX_WIDTH / width;
-                width = MAX_WIDTH;
-              }
+              if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
             } else {
-              if (height > MAX_HEIGHT) {
-                width *= MAX_HEIGHT / height;
-                height = MAX_HEIGHT;
-              }
+              if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
             }
-
-            canvas.width = width;
-            canvas.height = height;
+            canvas.width = width; canvas.height = height;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, width, height);
-
-            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
-            setProdImg(compressedBase64);
+            setProdImg(canvas.toDataURL('image/jpeg', 0.7));
             setIsCompressing(false);
           };
           img.src = event.target.result;
@@ -210,20 +220,18 @@
           alert("Tu navegador no soporta geolocalización.");
           return;
         }
-
         setIsGettingLocation(true);
         navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const lat = position.coords.latitude;
-            const lng = position.coords.longitude;
+          (pos) => {
+            const lat = pos.coords.latitude, lng = pos.coords.longitude;
             setCustCoords({ lat, lng });
-            setCustAddress(`📍 Ubicación GPS exacta (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+            setCustAddress(`📍 GPS exacto (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
             setIsGettingLocation(false);
-            alert("¡Ubicación GPS obtenida con éxito!");
+            alert("Ubicación obtenida con éxito.");
           },
-          (error) => {
+          () => {
             setIsGettingLocation(false);
-            alert("No se pudo obtener la ubicación. Asegúrate de dar permisos de GPS a tu navegador.");
+            alert("No se obtuvo la ubicación. Verifica los permisos de GPS.");
           },
           { enableHighAccuracy: true }
         );
@@ -239,42 +247,24 @@
         e.preventDefault();
         try {
           await db.collection('stores').add({
-            name: newStoreName, 
-            address: newStoreAddress, 
-            phone: newStorePhone,
-            alias: newStoreAlias,
-            titular: newStoreTitular,
-            hours: newStoreHours || '08:00 a 23:00 hs',
-            isOpen: true,
-            isSuspended: false,
-            user: newStoreUser, 
-            pass: newStorePass,
+            name: newStoreName, address: newStoreAddress, phone: newStorePhone, alias: newStoreAlias, titular: newStoreTitular,
+            hours: newStoreHours || '08:00 a 23:00 hs', isOpen: true, isSuspended: false, user: newStoreUser, pass: newStorePass,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
           setNewStoreName(''); setNewStoreAddress(''); setNewStorePhone(''); setNewStoreAlias(''); setNewStoreTitular(''); setNewStoreHours('08:00 a 23:00 hs'); setNewStoreUser(''); setNewStorePass('');
-          alert("Comercio registrado con éxito en la nube.");
-        } catch (err) {
-          alert("Error al registrar comercio: " + err.message);
-        }
+          alert("Comercio registrado con éxito.");
+        } catch (err) { alert("Error: " + err.message); }
       };
 
       const handleToggleStoreSuspension = async (storeId, currentStatus) => {
-        try {
-          await db.collection('stores').doc(storeId).update({ isSuspended: !currentStatus });
-          alert("Estado de suspensión actualizado.");
-        } catch (err) {
-          alert("Error: " + err.message);
-        }
+        try { await db.collection('stores').doc(storeId).update({ isSuspended: !currentStatus }); alert("Estado actualizado."); } 
+        catch (err) { alert("Error: " + err.message); }
       };
 
       const handleDeleteStore = async (storeId, storeName) => {
-        if (confirm(`¿Estás seguro de que deseas eliminar permanentemente el comercio "${storeName}"?`)) {
-          try {
-            await db.collection('stores').doc(storeId).delete();
-            alert("Comercio eliminado con éxito.");
-          } catch (err) {
-            alert("Error al eliminar comercio: " + err.message);
-          }
+        if (confirm(`¿Eliminar permanentemente "${storeName}"?`)) {
+          try { await db.collection('stores').doc(storeId).delete(); alert("Comercio eliminado."); } 
+          catch (err) { alert("Error: " + err.message); }
         }
       };
 
@@ -282,40 +272,23 @@
         e.preventDefault();
         try {
           await db.collection('cadetes').add({
-            name: newCadeteName, 
-            phone: newCadetePhone, 
-            vehicle: newCadeteVehicle, 
-            user: newCadeteUser, 
-            pass: newCadetePass, 
-            balance: 0, 
-            isOnline: true,
-            isSuspended: false,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            name: newCadeteName, phone: newCadetePhone, vehicle: newCadeteVehicle, user: newCadeteUser, pass: newCadetePass,
+            balance: 0, isOnline: true, isSuspended: false, createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
           setNewCadeteName(''); setNewCadetePhone(''); setNewCadeteUser(''); setNewCadetePass(''); setNewCadeteVehicle('Moto');
-          alert("Cadete creado exitosamente en la nube.");
-        } catch (err) {
-          alert("Error al crear cadete: " + err.message);
-        }
+          alert("Cadete creado con éxito.");
+        } catch (err) { alert("Error: " + err.message); }
       };
 
       const handleToggleCadeteSuspension = async (cadeteId, currentStatus) => {
-        try {
-          await db.collection('cadetes').doc(cadeteId).update({ isSuspended: !currentStatus });
-          alert("Estado de suspensión actualizado.");
-        } catch (err) {
-          alert("Error: " + err.message);
-        }
+        try { await db.collection('cadetes').doc(cadeteId).update({ isSuspended: !currentStatus }); alert("Estado actualizado."); } 
+        catch (err) { alert("Error: " + err.message); }
       };
 
       const handleDeleteCadete = async (cadeteId, cadeteName) => {
-        if (confirm(`¿Estás seguro de que deseas eliminar al cadete / repartidor "${cadeteName}"?`)) {
-          try {
-            await db.collection('cadetes').doc(cadeteId).delete();
-            alert("Cadete eliminado con éxito.");
-          } catch (err) {
-            alert("Error al eliminar cadete: " + err.message);
-          }
+        if (confirm(`¿Eliminar al repartidor "${cadeteName}"?`)) {
+          try { await db.collection('cadetes').doc(cadeteId).delete(); alert("Cadete eliminado."); } 
+          catch (err) { alert("Error: " + err.message); }
         }
       };
 
@@ -323,64 +296,39 @@
         e.preventDefault();
         try {
           await db.collection('config').doc('announcement').set({ text: announcementInput });
-          setAnnouncementInput('');
-          alert("¡Anuncio global actualizado con éxito!");
-        } catch (err) {
-          alert("Error al publicar anuncio: " + err.message);
-        }
+          setAnnouncementInput(''); alert("Anuncio publicado.");
+        } catch (err) { alert("Error: " + err.message); }
       };
 
       const handleClearAnnouncement = async () => {
-        try {
-          await db.collection('config').doc('announcement').set({ text: '' });
-          alert("Anuncio global eliminado.");
-        } catch (err) {
-          alert("Error: " + err.message);
-        }
+        try { await db.collection('config').doc('announcement').set({ text: '' }); alert("Anuncio eliminado."); } 
+        catch (err) { alert("Error: " + err.message); }
       };
 
       const handleRechargeBalance = async (e) => {
         e.preventDefault();
         const amount = Number(rechargeAmount);
         if (!selectedCadeteId || amount <= 0) return;
-        
         const cadeteDoc = cadetes.find(c => c.id === selectedCadeteId);
         if (!cadeteDoc) return;
-
         try {
-          await db.collection('cadetes').doc(selectedCadeteId).update({
-            balance: (Number(cadeteDoc.balance) || 0) + amount
-          });
-          setRechargeAmount('');
-          alert("¡Saldo acreditado correctamente en la nube!");
-        } catch (err) {
-          alert("Error al recargar saldo: " + err.message);
-        }
+          await db.collection('cadetes').doc(selectedCadeteId).update({ balance: (Number(cadeteDoc.balance) || 0) + amount });
+          setRechargeAmount(''); alert("Saldo acreditado.");
+        } catch (err) { alert("Error: " + err.message); }
       };
 
       const handleResetStoreCommission = async (storeId, storeName) => {
-        if (confirm(`¿Confirmas que el comercio "${storeName}" te abonó la comisión semanal? Esto pondrá su saldo deudor en $0.`)) {
+        if (confirm(`¿Saldar comisiones pendientes de "${storeName}"?`)) {
           try {
             const batch = db.batch();
             const storeOrders = orders.filter(o => {
               const hasStore = o.storeId === storeId || (o.storesInvolved && o.storesInvolved.includes(storeId));
               return hasStore && o.status === 'entregado' && !o.storeSettled;
             });
-
-            if (storeOrders.length === 0) {
-              alert("Este comercio no tiene comisiones pendientes por cobrar.");
-              return;
-            }
-
-            storeOrders.forEach(o => {
-              const ref = db.collection('orders').doc(o.id);
-              batch.update(ref, { storeSettled: true });
-            });
-            await batch.commit();
-            alert(`¡Comisión de "${storeName}" marcada como cobrada con éxito! Saldo del comercio saldado en $0.`);
-          } catch (err) {
-            alert("Error al saldar cuentas: " + err.message);
-          }
+            if (storeOrders.length === 0) { alert("No hay comisiones pendientes."); return; }
+            storeOrders.forEach(o => { batch.update(db.collection('orders').doc(o.id), { storeSettled: true }); });
+            await batch.commit(); alert(`Comisión de "${storeName}" saldada a $0.`);
+          } catch (err) { alert("Error: " + err.message); }
         }
       };
 
@@ -388,14 +336,9 @@
         e.preventDefault();
         const found = stores.find(s => s.user === loginUser && s.pass === loginPass);
         if (found) {
-          if (found.isSuspended) {
-            alert("⚠️ Tu comercio se encuentra suspendido temporalmente por el Administrador.");
-            return;
-          }
+          if (found.isSuspended) { alert("⚠️ Tu comercio se encuentra suspendido."); return; }
           setLoggedStore(found);
-        } else {
-          alert("Usuario o clave incorrectos");
-        }
+        } else { alert("Usuario o clave incorrectos"); }
       };
 
       const toggleStoreOpenStatus = async () => {
@@ -404,53 +347,28 @@
         try {
           await db.collection('stores').doc(loggedStore.id).update({ isOpen: updatedStatus });
           setLoggedStore({ ...loggedStore, isOpen: updatedStatus });
-        } catch (err) {
-          alert("Error al actualizar estado: " + err.message);
-        }
+        } catch (err) { alert("Error: " + err.message); }
       };
 
       const handleAddProduct = async (e) => {
         e.preventDefault();
-        if (!loggedStore) return;
-        if (isCompressing) {
-          alert("Espera un segundo mientras se procesa la foto...");
-          return;
-        }
-
-        let promoExpiresAt = null;
-        if (prodIsPromo) {
-          const hours = Number(prodPromoHours) || 24;
-          promoExpiresAt = Date.now() + (hours * 60 * 60 * 1000);
-        }
-
+        if (!loggedStore || isCompressing) return;
+        let promoExpiresAt = prodIsPromo ? Date.now() + ((Number(prodPromoHours) || 24) * 3600000) : null;
         try {
           await db.collection('products').add({
-            storeId: loggedStore.id, 
-            name: prodName, 
-            price: Number(prodPrice) || 0, 
-            unit: prodUnit || 'Unidad',
-            category: prodCategory || 'General',
-            isPromo: prodIsPromo,
-            promoExpiresAt: promoExpiresAt,
-            description: prodDesc, 
-            image: prodImg || 'https://via.placeholder.com/150',
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            storeId: loggedStore.id, name: prodName, price: Number(prodPrice) || 0, unit: prodUnit || 'Unidad',
+            category: prodCategory || 'General', isPromo: prodIsPromo, promoExpiresAt, description: prodDesc,
+            image: prodImg || 'https://via.placeholder.com/150', createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
           setProdName(''); setProdPrice(''); setProdUnit('Unidad'); setProdCategory('General'); setProdIsPromo(false); setProdPromoHours('24'); setProdDesc(''); setProdImg('');
-          alert("Producto guardado con éxito en la nube.");
-        } catch (err) {
-          alert("Error al guardar producto: " + err.message);
-        }
+          alert("Producto guardado.");
+        } catch (err) { alert("Error: " + err.message); }
       };
 
       const handleDeleteProduct = async (id, name) => {
-        if (confirm(`¿Seguro deseas eliminar "${name}" de tu catálogo?`)) {
-          try {
-            await db.collection('products').doc(id).delete();
-            alert("Producto eliminado con éxito.");
-          } catch (err) {
-            alert("Error al eliminar: " + err.message);
-          }
+        if (confirm(`¿Eliminar "${name}" del catálogo?`)) {
+          try { await db.collection('products').doc(id).delete(); alert("Producto eliminado."); } 
+          catch (err) { alert("Error: " + err.message); }
         }
       };
 
@@ -458,14 +376,9 @@
         e.preventDefault();
         const found = cadetes.find(c => c.user === loginUser && c.pass === loginPass);
         if (found) {
-          if (found.isSuspended) {
-            alert("⚠️ Tu cuenta de cadete se encuentra suspendida temporalmente por el Administrador.");
-            return;
-          }
+          if (found.isSuspended) { alert("⚠️ Tu cuenta de cadete se encuentra suspendida."); return; }
           setLoggedCadete(found);
-        } else {
-          alert("Usuario o clave incorrectos");
-        }
+        } else { alert("Usuario o clave incorrectos"); }
       };
 
       const toggleCadeteOnlineStatus = async () => {
@@ -474,83 +387,51 @@
         try {
           await db.collection('cadetes').doc(loggedCadete.id).update({ isOnline: updatedStatus });
           setLoggedCadete({ ...loggedCadete, isOnline: updatedStatus });
-        } catch (err) {
-          alert("Error al actualizar estado: " + err.message);
-        }
+        } catch (err) { alert("Error: " + err.message); }
       };
 
       const handleAcceptOrder = async (orderId) => {
-        if (!loggedCadete) return;
-        if (!loggedCadete.isOnline) {
-          alert("Estás desconectado. Debes ponerte en línea para aceptar envíos.");
-          return;
-        }
-        if ((Number(loggedCadete.balance) || 0) < APP_FEE) {
-          alert(`Saldo insuficiente. Necesitas al menos $${APP_FEE} para tomar un envío.`);
-          return;
-        }
-
+        if (!loggedCadete || !loggedCadete.isOnline) { alert("Debes estar en línea."); return; }
+        if ((Number(loggedCadete.balance) || 0) < APP_FEE) { alert(`Saldo insuficiente (Mínimo $${APP_FEE}).`); return; }
         try {
           const newBalance = (Number(loggedCadete.balance) || 0) - APP_FEE;
           await db.collection('cadetes').doc(loggedCadete.id).update({ balance: newBalance });
           await db.collection('orders').doc(orderId).update({ status: 'tomado_por_cadete', cadeteId: loggedCadete.id });
           setLoggedCadete({ ...loggedCadete, balance: newBalance });
-          alert("¡Envío aceptado! Se le notificó al cliente que el cadete tomó el pedido y espera que esté listo.");
-        } catch (err) {
-          alert("Error al aceptar envío: " + err.message);
-        }
+          alert("¡Envío aceptado! Se ha notificado en la aplicación.");
+        } catch (err) { alert("Error: " + err.message); }
       };
 
       const handleMarkAsOnTheWay = async (orderId) => {
-        try {
-          await db.collection('orders').doc(orderId).update({ status: 'en_camino' });
-          alert("¡Pedido marcado como retirado! Ahora el cliente ve que va en camino.");
-        } catch (err) {
-          alert("Error al actualizar estado: " + err.message);
-        }
+        try { await db.collection('orders').doc(orderId).update({ status: 'en_camino' }); alert("Pedido marcado en camino."); } 
+        catch (err) { alert("Error: " + err.message); }
       };
 
       const handleCompleteOrder = async (orderId) => {
-        try {
-          await db.collection('orders').doc(orderId).update({ status: 'entregado' });
-          alert("¡Pedido entregado con éxito!");
-        } catch (err) {
-          alert("Error al actualizar pedido: " + err.message);
-        }
+        try { await db.collection('orders').doc(orderId).update({ status: 'entregado' }); alert("¡Pedido completado con éxito!"); } 
+        catch (err) { alert("Error: " + err.message); }
       };
 
       const handleRejectOrder = async (orderId) => {
         if (!loggedCadete) return;
-        if (confirm("¿Estás seguro de que deseas rechazar este envío? Volverá a estar disponible para otro cadete y se te devolverán los $" + APP_FEE + ".")) {
+        if (confirm("¿Rechazar envío y recuperar los $" + APP_FEE + " de saldo?")) {
           try {
             const newBalance = (Number(loggedCadete.balance) || 0) + APP_FEE;
             await db.collection('cadetes').doc(loggedCadete.id).update({ balance: newBalance });
             await db.collection('orders').doc(orderId).update({ status: 'pendiente', cadeteId: null });
             setLoggedCadete({ ...loggedCadete, balance: newBalance });
-            alert("Envío rechazado y saldo devuelto correctamente.");
-          } catch (err) {
-            alert("Error al rechazar envío: " + err.message);
-          }
+            alert("Envío liberado.");
+          } catch (err) { alert("Error: " + err.message); }
         }
       };
 
       const addToCart = (product, store) => {
         const onlineCadetesCount = cadetes.filter(c => c.isOnline && !c.isSuspended).length;
-        if (onlineCadetesCount === 0) {
-          alert("⚠️ En este momento no hay cadetes en línea disponibles. Intenta más tarde.");
-          return;
-        }
-
-        if (!store.isOpen || store.isSuspended) {
-          alert("Este negocio no está disponible actualmente.");
-          return;
-        }
+        if (onlineCadetesCount === 0) { alert("⚠️ No hay cadetes en línea disponibles."); return; }
+        if (!store.isOpen || store.isSuspended) { alert("Negocio no disponible."); return; }
 
         const qtyToAdd = Number(selectedQtyMap[product.id]) || 1;
-        if (qtyToAdd <= 0) {
-          alert("Ingresa una cantidad válida.");
-          return;
-        }
+        if (qtyToAdd <= 0) return;
 
         const exists = cart.find(i => i.id === product.id);
         if (exists) {
@@ -563,11 +444,8 @@
 
       const updateCartItemQuantity = (productId, newQty) => {
         const qty = Number(newQty);
-        if (qty <= 0) {
-          setCart(cart.filter(item => item.id !== productId));
-        } else {
-          setCart(cart.map(item => item.id === productId ? { ...item, quantity: qty } : item));
-        }
+        if (qty <= 0) setCart(cart.filter(item => item.id !== productId));
+        else setCart(cart.map(item => item.id === productId ? { ...item, quantity: qty } : item));
       };
 
       const cartSubtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -583,12 +461,8 @@
           if (!uniqueStoresMap[item.storeId]) {
             const storeDoc = stores.find(s => s.id === item.storeId);
             uniqueStoresMap[item.storeId] = {
-              storeId: item.storeId,
-              storeName: item.storeName,
-              storeAddress: item.storeAddress,
-              storePhone: storeDoc ? storeDoc.phone : '',
-              alias: storeDoc ? storeDoc.alias : '',
-              items: []
+              storeId: item.storeId, storeName: item.storeName, storeAddress: item.storeAddress,
+              alias: storeDoc ? storeDoc.alias : '', items: []
             };
           }
           uniqueStoresMap[item.storeId].items.push(item);
@@ -597,87 +471,42 @@
         const storesList = Object.values(uniqueStoresMap);
         const storesInvolvedIds = storesList.map(s => s.storeId);
         
-        const subtotal = cartSubtotal;
-        const totalDeliveryFee = calculatedDeliveryFee; 
-        const grandTotal = subtotal + totalDeliveryFee;
-        
         try {
           const docRef = await db.collection('orders').add({
-            storesInvolved: storesInvolvedIds,
-            storesList: storesList,
-            customerName: custName,
-            customerPhone: custPhone,
-            address: custAddress,
-            coords: custCoords || null,
-            paymentMethod: paymentMethod,
-            items: cart,
-            deliveryFee: totalDeliveryFee,
-            subtotal: subtotal,
-            total: grandTotal,
-            status: 'pendiente',
-            cadeteId: null,
-            storeSettled: false,
+            storesInvolved: storesInvolvedIds, storesList, customerName: custName, customerPhone: custPhone,
+            address: custAddress, coords: custCoords || null, paymentMethod, items: cart,
+            deliveryFee: calculatedDeliveryFee, subtotal: cartSubtotal, total: cartSubtotal + calculatedDeliveryFee,
+            status: 'pendiente', cadeteId: null, storeSettled: false,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
 
           setLastOrderId(docRef.id);
-          setCart([]);
-          setIsCartOpen(false);
-          setCustName(''); setCustPhone(''); setCustAddress(''); setCustCoords(null); setPaymentMethod('Efectivo');
-          alert("¡Pedido enviado con éxito! Notifica a cada comercio por WhatsApp usando los botones.");
-        } catch (err) {
-          alert("Error al enviar pedido: " + err.message);
-        }
+          setCart([]); setIsCartOpen(false); setCustName(''); setCustPhone(''); setCustAddress(''); setCustCoords(null); setPaymentMethod('Efectivo');
+          alert("¡Pedido registrado con éxito!");
+        } catch (err) { alert("Error al enviar pedido: " + err.message); }
       };
 
       const filteredStores = stores.filter(store => {
         if (store.isSuspended) return false;
         const query = searchTerm.toLowerCase().trim();
         if (!query) return true;
-
         const matchesStore = store.name.toLowerCase().includes(query) || (store.address && store.address.toLowerCase().includes(query));
         const storeProds = products.filter(p => p.storeId === store.id);
         const matchesProduct = storeProds.some(p => p.name.toLowerCase().includes(query) || (p.description && p.description.toLowerCase().includes(query)));
-
         return matchesStore || matchesProduct;
       });
 
       const onlineCadetesCount = cadetes.filter(c => c.isOnline && !c.isSuspended).length;
-
-      const promoProducts = products.filter(p => {
-        if (!p.isPromo) return false;
-        if (p.promoExpiresAt && currentTime > p.promoExpiresAt) return false;
-        const store = stores.find(s => s.id === p.storeId);
-        return store && store.isOpen && !store.isSuspended;
-      });
-
-      const getTimeLeftString = (expiresAt) => {
-        if (!expiresAt) return "Por tiempo limitado";
-        const diff = expiresAt - currentTime;
-        if (diff <= 0) return "Expirando...";
-        
-        const hours = Math.floor(diff / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-        if (hours > 24) {
-          const days = Math.floor(hours / 24);
-          return `Quedan ${days}d ${hours % 24}h`;
-        }
-        return `⏳ ${hours}h ${minutes}m ${seconds}s`;
-      };
-
-      const totalCartItemsCount = cart.reduce((sum, item) => sum + Number(item.quantity), 0);
-
+      const promoProducts = products.filter(p => p.isPromo && (!p.promoExpiresAt || currentTime <= p.promoExpiresAt));
       const activeLiveOrder = orders.find(o => o.id === lastOrderId);
       const activeCadete = activeLiveOrder ? cadetes.find(c => c.id === activeLiveOrder.cadeteId) : null;
 
       return (
         <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl relative pb-24">
-          <header className="bg-red-600 text-white p-4 sticky top-0 z-50 flex justify-between items-center shadow">
+          <header className="bg-red-600 text-white p-4 sticky top-0 z-40 flex justify-between items-center shadow">
             <div>
               <h1 className="text-xl font-bold">Catuna Pedidos</h1>
-              <p className="text-xs text-red-100">Delivery Local (Multi-Local)</p>
+              <p className="text-xs text-red-100">Delivery Multi-Local</p>
             </div>
             <span className="text-xs bg-red-700 px-2 py-1 rounded font-bold uppercase">{currentTab}</span>
           </header>
@@ -701,314 +530,81 @@
             {currentTab === 'cliente' && (
               <div className="space-y-4">
                 
-                {activeLiveOrder && activeLiveOrder.status !== 'entregado' && activeLiveOrder.status !== 'cancelado_por_tiempo' && (
-                  <div className={`p-4 rounded-xl border-2 text-center space-y-3 shadow-lg transition-all ${activeLiveOrder.status === 'en_camino' ? 'bg-green-50 border-green-500 animate-pulse' : 'bg-orange-50 border-orange-400'}`}>
-                    
+                {activeLiveOrder && activeLiveOrder.status !== 'entregado' && (
+                  <div className={`p-4 rounded-xl border-2 text-center space-y-3 shadow-lg ${activeLiveOrder.status === 'en_camino' ? 'bg-green-50 border-green-500 animate-pulse' : 'bg-orange-50 border-orange-400'}`}>
                     <div className="bg-red-600 text-white py-1.5 px-3 rounded-lg shadow font-extrabold text-sm flex justify-between items-center">
-                      <span>🏷️ Código de Pedido:</span>
+                      <span>🏷️ Pedido:</span>
                       <span className="bg-white text-red-700 px-2.5 py-0.5 rounded font-mono text-base">#{activeLiveOrder.id.slice(-4).toUpperCase()}</span>
                     </div>
 
                     <div className="bg-white p-2.5 rounded-lg border shadow-sm space-y-1">
-                      <div className="flex items-center justify-center gap-2">
-                        <span className="text-xl">{activeLiveOrder.status === 'en_camino' ? '🛵' : '⏳'}</span>
-                        <h3 className="font-extrabold text-xs text-gray-900 uppercase">
-                          {activeLiveOrder.status === 'en_camino' 
-                            ? '¡Tu pedido va en camino!' 
-                            : activeLiveOrder.status === 'tomado_por_cadete'
-                            ? 'El cadete aceptó el pedido (Esperando que esté listo)'
-                            : 'Pedido enviado (Esperando cadete)'}
-                        </h3>
-                      </div>
-                      <p className="text-[11px] text-gray-600">
-                        {activeLiveOrder.status === 'en_camino' 
-                          ? '📢 El cadete retiró los productos y se dirige a tu domicilio.'
-                          : activeLiveOrder.status === 'tomado_por_cadete'
-                          ? '📢 Un cadete ya tomó tu pedido y está atento a que el comercio confirme que está listo.'
-                          : '📢 Tu pedido fue registrado y está a la espera de que un cadete lo tome.'}
-                      </p>
+                      <h3 className="font-extrabold text-xs text-gray-900 uppercase">
+                        {activeLiveOrder.status === 'en_camino' ? '¡Tu pedido va en camino!' : activeLiveOrder.status === 'tomado_por_cadete' ? 'Cadete asignado (En preparación)' : 'Pedido registrado (Esperando cadete)'}
+                      </h3>
                     </div>
 
-                    <div className="bg-white p-3 rounded-lg border border-orange-200 text-left text-xs space-y-2 shadow-sm">
-                      <p className="font-bold text-gray-800">Forma de Pago: <span className="text-red-600">{activeLiveOrder.paymentMethod}</span></p>
-                      
-                      {activeLiveOrder.paymentMethod === 'Transferencia' ? (
-                        <div className="bg-blue-50 border border-blue-200 p-2.5 rounded text-[11px] space-y-1">
-                          <p className="font-bold text-blue-950">💡 CÓMO PAGAR TU PEDIDO:</p>
-                          <p className="text-blue-900">
-                            1. <strong>Productos a transferir al comercio:</strong> <span className="font-extrabold text-red-600">${Math.round(activeLiveOrder.subtotal || 0)}</span> (ver alias abajo).
-                          </p>
-                          <p className="text-blue-900">
-                            2. <strong>Envío a pagar en efectivo al cadete:</strong> <span className="font-extrabold text-green-700">${Math.round(activeLiveOrder.deliveryFee || BASE_DELIVERY_FEE)}</span> (al recibir).
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="bg-green-50 border border-green-200 p-2.5 rounded text-[11px] space-y-1">
-                          <p className="font-bold text-green-950">💵 TOTAL EN EFECTIVO A ABONAR AL CADETE:</p>
-                          <p className="text-green-900 text-sm font-extrabold">${Math.round(activeLiveOrder.total)} <span className="text-[10px] font-normal">(Incluye productos + envío)</span></p>
-                        </div>
-                      )}
-                    </div>
-
-                    {activeLiveOrder.storesList && (
-                      <div className="bg-white p-2.5 rounded-lg border border-orange-200 text-left text-xs space-y-2 shadow-sm">
-                        <p className="font-bold text-orange-900">🔔 Notifica a cada comercio por WhatsApp:</p>
-                        {activeLiveOrder.storesList.map((s, idx) => {
-                          const sSubtotal = s.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-                          const storeItemsList = s.items.map(i => `• ${i.quantity} ${i.unit || 'Unid.'} x ${i.name} ($${Math.round(i.price * i.quantity)})`).join('%0A');
-                          const storeMsg = `🔔 *NUEVO PEDIDO #${activeLiveOrder.id.slice(-4).toUpperCase()} - Catuna Pedidos*%0A%0A*Cliente:* ${encodeURIComponent(activeLiveOrder.customerName)}%0A*Pago:* ${encodeURIComponent(activeLiveOrder.paymentMethod)}%0A*Dirección:* ${encodeURIComponent(activeLiveOrder.address)}%0A%0A*Tus productos:*%0A${storeItemsList}%0A%0A*Subtotal a transferir:* $${Math.round(sSubtotal)}`;
-
-                          return (
-                            <div key={idx} className="flex justify-between items-center border-b pb-1 last:border-b-0">
-                              <span><strong>{s.storeName}</strong></span>
-                              {s.storePhone ? (
-                                <a 
-                                  href={`https://wa.me/549${s.storePhone}?text=${storeMsg}`} 
-                                  target="_blank" 
-                                  className="bg-green-600 hover:bg-green-700 text-white px-2.5 py-1 rounded text-[11px] font-bold shadow flex items-center gap-1">
-                                  💬 Enviar a {s.storeName}
-                                </a>
-                              ) : (
-                                <span className="text-gray-400 text-[10px]">Sin teléfono</span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {activeLiveOrder.status === 'en_camino' && activeCadete ? (
-                      <div className="bg-white p-2.5 rounded-lg border border-green-200 text-left text-xs space-y-1.5 shadow-sm">
-                        <p className="font-bold text-green-900 flex justify-between">
-                          <span>Repartidor asignado:</span>
-                          <span className="text-green-700 font-extrabold">{activeCadete.name}</span>
-                        </p>
-                        <p className="text-gray-600">Vehículo: <strong>{activeCadete.vehicle}</strong></p>
-                        
-                        <a 
-                          href={`https://wa.me/549${activeCadete.phone}?text=Hola%20${encodeURIComponent(activeCadete.name)},%20te%20escribo%20por%20mi%20pedido%20%23${activeLiveOrder.id.slice(-4).toUpperCase()}.`}
-                          target="_blank"
-                          className="block w-full bg-green-600 hover:bg-green-700 text-white font-bold text-center py-1.5 rounded shadow mt-1">
-                          💬 Contactar al Cadete por WhatsApp
-                        </a>
-                      </div>
-                    ) : (
-                      <p className="text-[11px] text-orange-800 italic">
-                        {activeCadete ? `Cadete asignado: ${activeCadete.name} (Esperando que el comercio confirme que está listo)` : 'Esperando que un cadete acepte el envío...'}
-                      </p>
-                    )}
-
-                    {activeLiveOrder.paymentMethod === 'Transferencia' && activeLiveOrder.storesList && (
-                      <div className="bg-amber-50 border border-amber-200 p-2 rounded text-[11px] text-left space-y-1 mt-2">
-                        <p className="font-bold text-amber-900">💳 Alias para transferir solo el valor de los productos:</p>
-                        {activeLiveOrder.storesList.map((s, idx) => {
-                          const sSubtotal = s.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-                          return (
-                            <div key={idx} className="flex justify-between items-center border-b pb-1 last:border-b-0">
-                              <span><strong>{s.storeName} (${Math.round(sSubtotal)}):</strong> <span className="font-mono font-bold select-all">{s.alias || 'Consultar local'}</span></span>
-                              {s.storePhone && (
-                                <a href={`https://wa.me/549${s.storePhone}?text=Hola,%20te%20envío%20el%20comprobante%20de%20mi%20pedido%20%23${activeLiveOrder.id.slice(-4).toUpperCase()}%20por%20$${Math.round(sSubtotal)}:`} target="_blank" className="bg-green-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">
-                                  💬 Comprobante
-                                </a>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    <button onClick={() => setLastOrderId(null)} className="text-[10px] text-gray-400 underline pt-1 block mx-auto">Ocultar aviso</button>
+                    <button 
+                      onClick={() => setActiveChatOrder(activeLiveOrder)} 
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2 rounded.lg shadow flex items-center justify-center gap-2 text-xs">
+                      💬 Abrir Chat del Pedido (En Vivo)
+                    </button>
                   </div>
                 )}
 
-                <div className={`p-2.5 rounded-lg border text-center text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm ${onlineCadetesCount > 0 ? 'bg-green-50 border-green-300 text-green-800' : 'bg-red-50 border-red-300 text-red-800'}`}>
-                  {onlineCadetesCount > 0 ? (
-                    <><span>🛵</span> <span>¡Hay {onlineCadetesCount} {onlineCadetesCount === 1 ? 'cadete activo' : 'cadetes activos'} listos para repartir!</span></>
-                  ) : (
-                    <><span>⚠️</span> <span>No hay cadetes activos en este momento. Pedidos pausados temporalmente.</span></>
-                  )}
+                <div className={`p-2.5 rounded-lg border text-center text-xs font-bold ${onlineCadetesCount > 0 ? 'bg-green-50 border-green-300 text-green-800' : 'bg-red-50 border-red-300 text-red-800'}`}>
+                  {onlineCadetesCount > 0 ? `🛵 ¡Hay ${onlineCadetesCount} cadete(s) activo(s)!` : '⚠️ No hay cadetes activos.'}
                 </div>
-
-                {promoProducts.length > 0 && (
-                  <div className="bg-gradient-to-r from-red-50 to-amber-50 border-2 border-red-400 p-3 rounded-xl shadow-sm space-y-2">
-                    <h2 className="font-extrabold text-red-700 text-sm flex items-center gap-1.5">
-                      🔥 ¡Promociones y Ofertas del Día! 🔥
-                    </h2>
-                    
-                    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
-                      {promoProducts.map(prod => {
-                        const store = stores.find(s => s.id === prod.storeId);
-                        const currentQty = selectedQtyMap[prod.id] !== undefined ? selectedQtyMap[prod.id] : 1;
-
-                        return (
-                          <div key={prod.id} className="min-w-[190px] max-w-[190px] bg-white p-2 rounded-lg border border-red-200 shadow-sm flex flex-col justify-between flex-shrink-0">
-                            <div>
-                              <div className="relative">
-                                <img src={prod.image} className="w-full h-24 object-cover rounded bg-gray-200" alt={prod.name} />
-                                <span className="absolute top-1 right-1 bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow">
-                                  {getTimeLeftString(prod.promoExpiresAt)}
-                                </span>
-                              </div>
-                              <p className="font-bold text-xs text-gray-800 mt-1 truncate">{prod.name}</p>
-                              <p className="text-[10px] text-gray-500 truncate">🏪 {store?.name}</p>
-                              <p className="text-xs font-extrabold text-red-600 mt-0.5">${prod.price} <span className="text-[9px] text-gray-400">/ {prod.unit || 'Unid.'}</span></p>
-                            </div>
-
-                            <div className="mt-2 pt-1 border-t flex items-center justify-between">
-                              <input 
-                                type="number" 
-                                min="0.1" 
-                                value={currentQty} 
-                                onChange={(e) => setSelectedQtyMap({ ...selectedQtyMap, [prod.id]: e.target.value })}
-                                className="w-12 text-[10px] p-1 border rounded font-bold text-center bg-gray-50"
-                              />
-                              <button 
-                                onClick={() => addToCart(prod, store)} 
-                                className="text-[10px] bg-red-600 text-white px-2 py-1 rounded font-bold hover:bg-red-700 shadow">
-                                + Pedir
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
 
                 <div className="relative">
                   <input 
                     type="text"
-                    placeholder="🔍 Buscar negocio o producto (ej: Kiosco, Fernet, Bife)..."
+                    placeholder="🔍 Buscar negocio o producto..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full text-xs p-2.5 pl-3 pr-8 border-2 border-red-200 rounded-lg shadow-sm focus:outline-none focus:border-red-600 bg-gray-50"
+                    className="w-full text-xs p-2.5 border-2 border-red-200 rounded-lg shadow-sm focus:outline-none focus:border-red-600 bg-gray-50"
                   />
-                  {searchTerm && (
-                    <button 
-                      onClick={() => setSearchTerm('')} 
-                      className="absolute right-2.5 top-2.5 text-xs text-gray-400 font-bold hover:text-gray-600">
-                      ✕
-                    </button>
-                  )}
                 </div>
 
-                {filteredStores.length === 0 ? (
-                  <div className="text-center py-10 text-gray-500">
-                    <p className="font-bold text-base">No se encontraron comercios</p>
-                    <p className="text-xs">Prueba buscando otro nombre o producto.</p>
-                  </div>
-                ) : (
-                  filteredStores.map(store => {
-                    const storeProducts = products.filter(p => {
-                      if (p.storeId !== store.id) return false;
-                      const q = searchTerm.toLowerCase().trim();
-                      if (!q) return true;
-                      
-                      const matchesStore = store.name.toLowerCase().includes(q) || (store.address && store.address.toLowerCase().includes(q));
-                      if (matchesStore) return true;
-
-                      return p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q));
-                    });
-
-                    const categoriesMap = {};
-                    storeProducts.forEach(prod => {
-                      const cat = prod.category || 'General';
-                      if (!categoriesMap[cat]) categoriesMap[cat] = [];
-                      categoriesMap[cat].push(prod);
-                    });
-
-                    return (
-                      <div key={store.id} className="border rounded-lg p-3 bg-gray-50 shadow-sm space-y-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="font-bold text-gray-800 text-base">{store.name}</h3>
-                            <p className="text-xs text-gray-500">{store.address}</p>
-                            <p className="text-[11px] text-gray-400">🕒 Horario: {store.hours}</p>
-                          </div>
-                          <span className={`text-[10px] font-bold px-2 py-1 rounded ${store.isOpen ? 'bg-green-100 text-green-800 border border-green-300' : 'bg-red-100 text-red-800 border border-red-300'}`}>
-                            {store.isOpen ? '🟢 ABIERTO' : '🔴 CERRADO'}
-                          </span>
-                        </div>
-
-                        {store.alias && (
-                          <div className="bg-amber-50 border border-amber-200 p-2 rounded text-[11px] space-y-0.5">
-                            <p className="font-bold text-amber-900">💳 Datos para transferir la compra:</p>
-                            <p className="text-gray-700"><strong>Alias:</strong> <span className="font-mono font-bold select-all">{store.alias}</span></p>
-                            {store.titular && <p className="text-gray-700"><strong>Titular:</strong> {store.titular}</p>}
-                          </div>
-                        )}
-
-                        <div className="space-y-3">
-                          {storeProducts.length === 0 ? (
-                            <p className="text-[11px] text-gray-400 italic">No hay productos cargados en este local.</p>
-                          ) : (
-                            Object.keys(categoriesMap).map(categoryName => (
-                              <div key={categoryName} className="space-y-1.5">
-                                <h4 className="text-xs font-bold text-red-600 uppercase tracking-wide border-b border-red-200 pb-0.5 mt-2">
-                                  📁 {categoryName}
-                                </h4>
-                                {categoriesMap[categoryName].map(prod => {
-                                  const currentQty = selectedQtyMap[prod.id] !== undefined ? selectedQtyMap[prod.id] : 1;
-                                  const calculatedPrice = Math.round(prod.price * (Number(currentQty) || 1));
-
-                                  return (
-                                    <div key={prod.id} className="flex gap-3 bg-white p-2 rounded border items-center">
-                                      <img src={prod.image} className="w-16 h-16 object-cover rounded bg-gray-200" alt={prod.name} />
-                                      <div className="flex-1">
-                                        <div className="flex items-center gap-1.5">
-                                          <p className="font-bold text-sm text-gray-800">{prod.name}</p>
-                                          {prod.isPromo && (!prod.promoExpiresAt || currentTime <= prod.promoExpiresAt) && (
-                                            <span className="bg-red-100 text-red-700 font-extrabold text-[9px] px-1 py-0.5 rounded">🔥 PROMO</span>
-                                          )}
-                                        </div>
-                                        <p className="text-xs text-gray-500">{prod.description}</p>
-                                        <p className="text-xs font-bold text-red-600 mt-0.5">${prod.price} <span className="text-[10px] text-gray-400">/ {prod.unit || 'Unidad'}</span></p>
-                                        
-                                        <div className="mt-1 flex items-center gap-1.5">
-                                          <span className="text-[10px] font-semibold text-gray-600">Cant:</span>
-                                          <input 
-                                            type="number" 
-                                            step={prod.unit === 'Kg' ? '0.25' : (prod.unit === '100g' ? '0.5' : '1')}
-                                            min="0.1" 
-                                            value={currentQty} 
-                                            onChange={(e) => setSelectedQtyMap({ ...selectedQtyMap, [prod.id]: e.target.value })}
-                                            className="w-14 text-xs p-1 border rounded font-bold text-center bg-gray-50"
-                                          />
-                                          <span className="text-[10px] text-gray-500">{prod.unit || 'Unid.'}</span>
-                                        </div>
-                                      </div>
-
-                                      <div className="text-right flex flex-col items-end gap-1">
-                                        <p className="text-xs font-extrabold text-gray-800">${calculatedPrice}</p>
-                                        <button 
-                                          onClick={() => addToCart(prod, store)} 
-                                          disabled={!store.isOpen || onlineCadetesCount === 0}
-                                          className={`text-xs px-2.5 py-1 rounded font-bold ${store.isOpen && onlineCadetesCount > 0 ? 'bg-red-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>
-                                          {store.isOpen && onlineCadetesCount > 0 ? '+ Agregar' : 'No disponible'}
-                                        </button>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ))
-                          )}
-                        </div>
+                {filteredStores.map(store => (
+                  <div key={store.id} className="border rounded-lg p-3 bg-gray-50 shadow-sm space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-bold text-gray-800 text-base">{store.name}</h3>
+                        <p className="text-xs text-gray-500">{store.address}</p>
                       </div>
-                    );
-                  })
-                )}
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded ${store.isOpen ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                        {store.isOpen ? '🟢 ABIERTO' : '🔴 CERRADO'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {products.filter(p => p.storeId === store.id).map(prod => (
+                        <div key={prod.id} className="flex gap-3 bg-white p-2 rounded border items-center">
+                          <img src={prod.image} className="w-14 h-14 object-cover rounded bg-gray-200" alt={prod.name} />
+                          <div className="flex-1">
+                            <p className="font-bold text-sm text-gray-800">{prod.name}</p>
+                            <p className="text-xs text-gray-500">{prod.description}</p>
+                            <p className="text-xs font-bold text-red-600">${prod.price}</p>
+                          </div>
+                          <button 
+                            onClick={() => addToCart(prod, store)} 
+                            disabled={!store.isOpen || onlineCadetesCount === 0}
+                            className="text-xs px-2.5 py-1.5 rounded font-bold bg-red-600 text-white shadow disabled:bg-gray-300">
+                            + Pedir
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
 
                 {cart.length > 0 && (
-                  <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-gray-900 text-white p-3 shadow-2xl z-50 flex justify-between items-center border-t-2 border-red-500">
+                  <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-gray-900 text-white p-3 shadow-2xl z-40 flex justify-between items-center border-t-2 border-red-500">
                     <div>
-                      <p className="text-[10px] text-gray-300">🛒 {uniqueStoresInCart} {uniqueStoresInCart === 1 ? 'comercio' : 'comercios'} en tu carrito</p>
-                      <p className="text-xs font-bold">{totalCartItemsCount} ítems | Subtotal: ${Math.round(cartSubtotal)}</p>
+                      <p className="text-xs font-bold">Subtotal: ${Math.round(cartSubtotal)}</p>
                     </div>
-                    <button 
-                      onClick={() => setIsCartOpen(true)}
-                      className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-bold text-xs shadow animate-pulse">
-                      Ver Carrito Multi-Local ➔
+                    <button onClick={() => setIsCartOpen(true)} className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold text-xs shadow">
+                      Ver Carrito ➔
                     </button>
                   </div>
                 )}
@@ -1017,104 +613,29 @@
                   <div className="fixed inset-0 bg-black/60 z-50 flex flex-col justify-end max-w-md mx-auto">
                     <div className="bg-white rounded-t-2xl p-4 space-y-3 max-h-[85vh] overflow-y-auto shadow-2xl">
                       <div className="flex justify-between items-center border-b pb-2">
-                        <div>
-                          <h3 className="font-extrabold text-sm text-gray-900">🛒 Carrito de Compras (Multi-Local)</h3>
-                          <p className="text-[11px] text-gray-500">Puedes pedir a varios negocios en una sola salida.</p>
-                        </div>
-                        <button onClick={() => setIsCartOpen(false)} className="text-gray-400 font-bold text-sm p-1 hover:text-gray-600">✕</button>
+                        <h3 className="font-extrabold text-sm text-gray-900">🛒 Carrito de Compras</h3>
+                        <button onClick={() => setIsCartOpen(false)} className="text-gray-400 font-bold text-sm">✕</button>
                       </div>
 
-                      <div className="space-y-3 max-h-40 overflow-y-auto bg-gray-50 p-2 rounded-lg border">
+                      <div className="space-y-2">
                         {cart.map((item, idx) => (
-                          <div key={idx} className="flex justify-between items-center bg-white p-2 rounded border text-xs shadow-sm">
-                            <div className="flex-1 pr-2">
-                              <p className="font-bold text-gray-800">{item.name}</p>
-                              <p className="text-[10px] text-red-600 font-bold">🏪 {item.storeName}</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <input 
-                                type="number" 
-                                min="0.1" 
-                                step={item.unit === 'Kg' ? '0.25' : '1'}
-                                value={item.quantity} 
-                                onChange={(e) => updateCartItemQuantity(item.id, e.target.value)}
-                                className="w-14 text-center p-1 border rounded font-bold text-xs bg-gray-50"
-                              />
-                              <span className="font-extrabold text-red-600 w-16 text-right">${Math.round(item.price * item.quantity)}</span>
-                              <button onClick={() => updateCartItemQuantity(item.id, 0)} className="text-red-500 font-bold text-xs px-1 hover:text-red-700">🗑️</button>
-                            </div>
+                          <div key={idx} className="flex justify-between items-center bg-gray-50 p-2 rounded text-xs">
+                            <span className="font-bold">{item.name} (x{item.quantity})</span>
+                            <span className="font-extrabold text-red-600">${Math.round(item.price * item.quantity)}</span>
                           </div>
                         ))}
                       </div>
 
-                      <div className="bg-gray-100 p-2.5 rounded-lg text-xs space-y-1">
-                        <div className="flex justify-between text-gray-600">
-                          <span>Subtotal Productos:</span>
-                          <span className="font-bold">${Math.round(cartSubtotal)}</span>
-                        </div>
-                        <div className="flex justify-between text-gray-600">
-                          <span>Costo de Envío ({uniqueStoresInCart} {uniqueStoresInCart === 1 ? 'parada' : 'paradas'}):</span>
-                          <span className="font-bold">${calculatedDeliveryFee}</span>
-                        </div>
-                        <div className="flex justify-between text-gray-900 font-extrabold text-sm pt-1 border-t border-gray-300">
-                          <span>TOTAL GENERAL:</span>
-                          <span className="text-red-600">${Math.round(cartSubtotal + calculatedDeliveryFee)}</span>
-                        </div>
-                      </div>
-
-                      <form onSubmit={handleCreateOrder} className="space-y-2.5 pt-1">
-                        <p className="text-xs font-bold text-gray-800">Datos para la entrega:</p>
+                      <form onSubmit={handleCreateOrder} className="space-y-2 pt-2">
                         <input required placeholder="Tu Nombre Completo" value={custName} onChange={e=>setCustName(e.target.value)} className="w-full text-xs p-2 border rounded" />
-                        <input required placeholder="Teléfono WhatsApp (Ej: 3826123456)" value={custPhone} onChange={e=>setCustPhone(e.target.value)} className="w-full text-xs p-2 border rounded" />
-                        
-                        <div className="space-y-1">
-                          <div className="flex gap-2">
-                            <input 
-                              required 
-                              placeholder="Dirección exacta o referencias" 
-                              value={custAddress} 
-                              onChange={e=>setCustAddress(e.target.value)} 
-                              className="flex-1 text-xs p-2 border rounded" 
-                            />
-                            <button 
-                              type="button" 
-                              onClick={handleGetLocationGPS}
-                              disabled={isGettingLocation}
-                              className="bg-blue-600 text-white font-bold px-3 py-1.5 rounded text-[11px] shadow hover:bg-blue-700 flex items-center gap-1 flex-shrink-0">
-                              {isGettingLocation ? '⏳ Buscando...' : '📍 Usar GPS'}
-                            </button>
-                          </div>
-                          {custCoords && (
-                            <p className="text-[10px] text-green-600 font-bold">✅ Ubicación GPS guardada correctamente.</p>
-                          )}
+                        <input required placeholder="Teléfono de Contacto" value={custPhone} onChange={e=>setCustPhone(e.target.value)} className="w-full text-xs p-2 border rounded" />
+                        <div className="flex gap-2">
+                          <input required placeholder="Dirección exacta" value={custAddress} onChange={e=>setCustAddress(e.target.value)} className="flex-1 text-xs p-2 border rounded" />
+                          <button type="button" onClick={handleGetLocationGPS} className="bg-blue-600 text-white font-bold px-2.5 py-1 rounded text-[10px]">📍 GPS</button>
                         </div>
-
-                        <div className="bg-amber-50 border border-amber-300 p-2.5 rounded space-y-1.5">
-                          <label className="block text-xs font-bold text-amber-900">💵 Selecciona la Forma de Pago:</label>
-                          <div className="grid grid-cols-2 gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setPaymentMethod('Efectivo')}
-                              className={`py-2 rounded font-bold text-xs border ${paymentMethod === 'Efectivo' ? 'bg-green-600 text-white border-green-700 shadow' : 'bg-white text-gray-700 border-gray-300'}`}>
-                              💵 Efectivo (todo al cadete)
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setPaymentMethod('Transferencia')}
-                              className={`py-2 rounded font-bold text-xs border ${paymentMethod === 'Transferencia' ? 'bg-blue-600 text-white border-blue-700 shadow' : 'bg-white text-gray-700 border-gray-300'}`}>
-                              💳 Transferencia (Productos al local + Envío al cadete)
-                            </button>
-                          </div>
-                        </div>
-                        
-                        <div className="flex gap-2 pt-2">
-                          <button type="button" onClick={() => setIsCartOpen(false)} className="flex-1 bg-gray-300 text-gray-700 py-2 rounded font-bold text-xs">
-                            Seguir Comprando
-                          </button>
-                          <button type="submit" className="flex-1 bg-red-600 text-white py-2 rounded font-bold text-xs shadow hover:bg-red-700">
-                            Confirmar Pedido 🚀
-                          </button>
-                        </div>
+                        <button type="submit" className="w-full bg-red-600 text-white py-2 rounded font-bold text-xs shadow">
+                          Confirmar Pedido 🚀
+                        </button>
                       </form>
                     </div>
                   </div>
@@ -1124,409 +645,93 @@
 
             {/* 2. VISTA COMERCIO */}
             {currentTab === 'comercio' && (
-              <div className="space-y-4">
+              <div className="space-y-4 text-xs">
                 {!loggedStore ? (
-                  <form onSubmit={handleStoreLogin} className="border p-4 rounded bg-gray-50 space-y-3 text-xs">
-                    <h2 className="font-bold text-sm text-gray-800">Acceso Comercio / Negocio</h2>
+                  <form onSubmit={handleStoreLogin} className="border p-4 rounded bg-gray-50 space-y-3">
+                    <h2 className="font-bold text-sm text-gray-800">Acceso Comercio</h2>
                     <input required placeholder="Usuario" value={loginUser} onChange={e=>setLoginUser(e.target.value)} className="w-full p-2 border rounded" />
                     <input required type="password" placeholder="Contraseña" value={loginPass} onChange={e=>setLoginPass(e.target.value)} className="w-full p-2 border rounded" />
                     <button type="submit" className="w-full bg-red-600 text-white py-2 rounded font-bold">Entrar</button>
                   </form>
                 ) : (
-                  <div className="space-y-4 text-xs">
+                  <div className="space-y-4">
                     <div className="flex justify-between items-center bg-gray-100 p-2.5 rounded border">
-                      <div>
-                        <p className="font-bold text-gray-800 text-sm">{loggedStore.name}</p>
-                        <p className="text-gray-500 text-[11px]">{loggedStore.hours}</p>
-                        {loggedStore.alias && <p className="text-amber-800 font-mono text-[10px]">Alias: {loggedStore.alias}</p>}
-                      </div>
+                      <span className="font-bold text-gray-800">{loggedStore.name}</span>
                       <button onClick={()=>setLoggedStore(null)} className="text-red-600 font-bold underline">Salir</button>
                     </div>
 
-                    <div className="border p-3 rounded bg-amber-50 border-amber-300 space-y-2 shadow-sm">
-                      <div className="flex items-center gap-1.5 text-amber-900 font-extrabold text-sm">
-                        <span>📅</span> <span>Estado de Comisión Semanal (5%)</span>
-                      </div>
-                      <p className="text-amber-800 text-[11px]">
-                        Recuerda que <strong>todos los domingos</strong> debes abonar el <strong>5%</strong> de tus ventas acumuladas al Administrador.
-                      </p>
-
-                      {(() => {
-                        const storeOrders = orders.filter(o => {
-                          const hasStore = o.storeId === loggedStore.id || (o.storesInvolved && o.storesInvolved.includes(loggedStore.id));
-                          return hasStore && o.status === 'entregado' && !o.storeSettled;
-                        });
-                        
-                        const totalSales = storeOrders.reduce((sum, o) => {
-                          if (o.storesList) {
-                            const myStorePart = o.storesList.find(s => s.storeId === loggedStore.id);
-                            if (myStorePart) {
-                              return sum + myStorePart.items.reduce((s, i) => s + (i.price * i.quantity), 0);
-                            }
-                          }
-                          return sum + (o.subtotal || 0);
-                        }, 0);
-
-                        const commissionDue = Math.round(totalSales * STORE_COMMISSION_PERCENT);
-                        const storeNetProfit = Math.round(totalSales - commissionDue);
-
-                        return (
-                          <div className="space-y-2 pt-1 border-t border-amber-200">
-                            <div className="grid grid-cols-2 gap-2 text-[11px]">
-                              <div className="bg-white p-2 rounded border">
-                                <p className="text-gray-500">Ventas Acumuladas:</p>
-                                <p className="font-bold text-gray-800 text-xs">${Math.round(totalSales)}</p>
-                              </div>
-                              <div className="bg-white p-2 rounded border">
-                                <p className="text-gray-500">Tu Ganancia (95%):</p>
-                                <p className="font-bold text-green-700 text-xs">${storeNetProfit}</p>
-                              </div>
-                            </div>
-
-                            <div className="bg-white p-2.5 rounded border space-y-1">
-                              <p className="text-xs text-amber-900 font-bold">Comisión 5% adeudada al Admin:</p>
-                              <p className="text-base font-extrabold text-red-600">${commissionDue}</p>
-                              <p className="text-[10px] text-gray-600">Para abonar, transfiere al Alias del Admin: <span className="font-mono font-bold select-all text-gray-900">{ADMIN_PAYMENT_INFO.alias}</span> ({ADMIN_PAYMENT_INFO.banco})</p>
-                              <p className="text-[10px] text-gray-400 italic">Una vez que el Administrador confirme tu pago, tu deuda se pondrá en $0 automáticamente.</p>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    <div className="border p-3 rounded bg-gray-50 flex justify-between items-center">
-                      <div>
-                        <p className="font-bold text-gray-800">Estado del Local:</p>
-                        <p className="text-gray-500 text-[11px]">Cambia el estado para recibir o pausar pedidos.</p>
-                      </div>
-                      <button 
-                        onClick={toggleStoreOpenStatus} 
-                        className={`px-3 py-1.5 rounded font-bold text-white shadow ${loggedStore.isOpen ? 'bg-green-600' : 'bg-red-600'}`}>
-                        {loggedStore.isOpen ? '🟢 ABIERTO' : '🔴 CERRADO'}
-                      </button>
-                    </div>
-
                     <div className="space-y-2">
-                      <h3 className="font-bold text-gray-800 border-b pb-1">Pedidos de mis Clientes:</h3>
-                      {orders.filter(o => {
-                        const hasStore = o.storeId === loggedStore.id || (o.storesInvolved && o.storesInvolved.includes(loggedStore.id));
-                        return hasStore && o.status !== 'entregado' && o.status !== 'cancelado_por_tiempo';
-                      }).length === 0 ? (
-                        <p className="text-gray-500 text-center py-2">No hay pedidos activos en este momento.</p>
-                      ) : (
-                        orders.filter(o => {
-                          const hasStore = o.storeId === loggedStore.id || (o.storesInvolved && o.storesInvolved.includes(loggedStore.id));
-                          return hasStore && o.status !== 'entregado' && o.status !== 'cancelado_por_tiempo';
-                        }).map(o => {
-                          const assignedCadete = cadetes.find(c => c.id === o.cadeteId);
-                          const myItems = o.storesList ? (o.storesList.find(s => s.storeId === loggedStore.id)?.items || []) : (o.items || []);
-
-                          return (
-                            <div key={o.id} className="border-2 border-red-200 p-3 rounded-lg bg-white shadow-sm space-y-2">
-                              <div className="flex justify-between items-center bg-red-50 p-1.5 rounded border border-red-200">
-                                <span className="font-extrabold text-red-700">Pedido #{o.id.slice(-4).toUpperCase()}</span>
-                                <span className={o.status === 'en_camino' ? 'text-blue-600 font-bold' : 'text-orange-600 font-bold'}>
-                                  {o.status === 'pendiente' ? '⏳ Esperando Cadete' : o.status === 'tomado_por_cadete' ? '🛵 Cadete asignado (Esperando listo)' : '🛵 En Camino'}
-                                </span>
-                              </div>
-
-                              <div className="flex justify-between font-bold text-gray-800">
-                                <span>Cliente: {o.customerName}</span>
-                              </div>
-                              <p className="text-gray-600"><strong>Forma de Pago:</strong> <span className="text-red-600 font-bold">{o.paymentMethod || 'Efectivo'}</span></p>
-                              <p className="text-gray-600"><strong>Dirección:</strong> {o.address}</p>
-                              
-                              <div className="bg-gray-50 p-2 rounded text-[11px] border">
-                                <p className="font-bold text-gray-700">Tus productos en este pedido:</p>
-                                {myItems.map((i, idx) => (
-                                  <div key={idx} className="flex justify-between items-center py-1 border-b last:border-b-0">
-                                    <span className="text-gray-600">• {i.quantity} {i.unit || 'Unid.'} x {i.name} (${Math.round(i.price * i.quantity)})</span>
-                                  </div>
-                                ))}
-                              </div>
-
-                              {assignedCadete ? (
-                                <div className="bg-blue-50 border border-blue-200 p-2 rounded space-y-2 mt-2">
-                                  <p className="text-blue-900 font-bold">Cadete asignado: {assignedCadete.name} ({assignedCadete.vehicle})</p>
-                                  <a 
-                                    href={`https://wa.me/549${assignedCadete.phone}?text=Hola%20${encodeURIComponent(assignedCadete.name)},%20el%20pedido%20%23${o.id.slice(-4).toUpperCase()}%20de%20${encodeURIComponent(o.customerName)}%20ya%20está%20listo%20para%20que%20lo%20retires.`}
-                                    target="_blank"
-                                    className="block w-full bg-green-600 text-white text-center font-bold py-1.5 rounded shadow hover:bg-green-700">
-                                    💬 Avisar al Cadete que está LISTO
-                                  </a>
-                                </div>
-                              ) : (
-                                <p className="text-gray-400 italic text-[11px]">Aún ningún cadete aceptó este envío.</p>
-                              )}
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-
-                    <form onSubmit={handleAddProduct} className="border p-3 rounded bg-gray-50 space-y-3 mt-4">
-                      <h3 className="font-bold text-gray-800">Cargar Producto al Catálogo</h3>
-                      <input required placeholder="Nombre del producto" value={prodName} onChange={e=>setProdName(e.target.value)} className="w-full p-2 border rounded" />
-                      
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-[11px] font-bold text-gray-700">Precio ($):</label>
-                          <input required type="number" placeholder="Ej: 8000" value={prodPrice} onChange={e=>setProdPrice(e.target.value)} className="w-full p-2 border rounded" />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-bold text-gray-700">Unidad de venta:</label>
-                          <select value={prodUnit} onChange={e=>setProdUnit(e.target.value)} className="w-full p-2 border rounded bg-white">
-                            <option value="Unidad">Por Unidad</option>
-                            <option value="Kg">Por Kilo (Kg)</option>
-                            <option value="100g">Por 100 Gramos</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-gray-700">Categoría:</label>
-                        <select value={prodCategory} onChange={e=>setProdCategory(e.target.value)} className="w-full p-2 border rounded bg-white font-bold text-red-600">
-                          <option value="Bebidas">🥤 Bebidas</option>
-                          <option value="Comidas / Minutas">🍔 Comidas / Minutas</option>
-                          <option value="Almacén">🛒 Almacén</option>
-                          <option value="Carnicería">🥩 Carnicería</option>
-                          <option value="Verdulería">🍅 Verdulería</option>
-                          <option value="Fiambrería">🧀 Fiambrería</option>
-                          <option value="Panadería">🍞 Panadería</option>
-                          <option value="General">📦 General / Varios</option>
-                        </select>
-                      </div>
-
-                      <div className="bg-amber-50 border border-amber-200 p-2.5 rounded space-y-2">
-                        <div className="flex items-center gap-2">
-                          <input type="checkbox" id="promoCheck" checked={prodIsPromo} onChange={(e) => setProdIsPromo(e.target.checked)} className="w-4 h-4 text-red-600 rounded" />
-                          <label htmlFor="promoCheck" className="text-[11px] font-bold text-amber-900 cursor-pointer">🔥 Marcar como Oferta / Promoción Destacada</label>
-                        </div>
-                        {prodIsPromo && (
-                          <div>
-                            <label className="block text-[10px] font-bold text-gray-700 mb-1">Duración:</label>
-                            <select value={prodPromoHours} onChange={e=>setProdPromoHours(e.target.value)} className="w-full p-1.5 border rounded bg-white text-xs font-bold text-red-600">
-                              <option value="6">6 horas</option>
-                              <option value="12">12 horas</option>
-                              <option value="24">24 horas</option>
-                              <option value="48">48 horas</option>
-                            </select>
+                      <h3 className="font-bold text-gray-800">Pedidos Activos:</h3>
+                      {orders.filter(o => (o.storeId === loggedStore.id || (o.storesInvolved && o.storesInvolved.includes(loggedStore.id))) && o.status !== 'entregado').map(o => (
+                        <div key={o.id} className="border p-3 rounded-lg bg-white shadow-sm space-y-2">
+                          <div className="flex justify-between font-bold">
+                            <span>Pedido #{o.id.slice(-4).toUpperCase()}</span>
+                            <span className="text-red-600">${Math.round(o.total)}</span>
                           </div>
-                        )}
-                      </div>
-
-                      <input placeholder="Descripción breve (Opcional)" value={prodDesc} onChange={e=>setProdDesc(e.target.value)} className="w-full p-2 border rounded" />
-                      
-                      <div className="bg-white p-2 border rounded space-y-1">
-                        <label className="block text-[11px] font-bold text-gray-700">📷 Foto del producto:</label>
-                        <input required type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs" />
-                        {isCompressing && <p className="text-[10px] text-orange-600 font-bold">⏳ Procesando...</p>}
-                      </div>
-
-                      <button type="submit" disabled={isCompressing} className="w-full bg-green-600 text-white py-2 rounded font-bold">Guardar Producto</button>
-                    </form>
-
-                    <div className="border p-3 rounded bg-gray-50 space-y-2 mt-4">
-                      <h3 className="font-bold text-gray-800 text-sm">📦 Tus Productos Cargados</h3>
-                      {products.filter(p => p.storeId === loggedStore.id).length === 0 ? (
-                        <p className="text-gray-500 italic text-[11px]">No has cargado ningún producto aún.</p>
-                      ) : (
-                        products.filter(p => p.storeId === loggedStore.id).map(prod => (
-                          <div key={prod.id} className="flex justify-between items-center bg-white p-2 rounded border shadow-sm">
-                            <div className="flex items-center gap-2">
-                              <img src={prod.image} className="w-10 h-10 object-cover rounded bg-gray-200" alt={prod.name} />
-                              <div>
-                                <p className="font-bold text-gray-800 text-xs">{prod.name}</p>
-                                <p className="text-[10px] text-gray-500">${prod.price} / {prod.unit || 'Unid.'} | <span className="text-red-600 font-semibold">{prod.category || 'General'}</span></p>
-                              </div>
-                            </div>
-                            <button 
-                              onClick={() => handleDeleteProduct(prod.id, prod.name)} 
-                              className="bg-red-600 text-white font-bold px-2 py-1 rounded text-[10px] shadow hover:bg-red-700">
-                              🗑️ Eliminar
-                            </button>
-                          </div>
-                        ))
-                      )}
+                          <p>Cliente: {o.customerName}</p>
+                          <button 
+                            onClick={() => setActiveChatOrder(o)} 
+                            className="w-full bg-indigo-600 text-white py-1.5 rounded font-bold flex items-center justify-center gap-1">
+                            💬 Chat del Pedido
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
               </div>
             )}
 
-            {/* 3. VISTA CADETE (RESTAURADA CON HISTORIAL Y ACUMULADOS) */}
+            {/* 3. VISTA CADETE */}
             {currentTab === 'cadete' && (
-              <div className="space-y-4">
+              <div className="space-y-4 text-xs">
                 {!loggedCadete ? (
-                  <form onSubmit={handleCadeteLogin} className="border p-4 rounded bg-gray-50 space-y-3 text-xs">
-                    <h2 className="font-bold text-sm text-gray-800">Acceso Repartidores / Cadetes</h2>
-                    <input required placeholder="Usuario Cadete" value={loginUser} onChange={e=>setLoginUser(e.target.value)} className="w-full p-2 border rounded" />
+                  <form onSubmit={handleCadeteLogin} className="border p-4 rounded bg-gray-50 space-y-3">
+                    <h2 className="font-bold text-sm text-gray-800">Acceso Cadete</h2>
+                    <input required placeholder="Usuario" value={loginUser} onChange={e=>setLoginUser(e.target.value)} className="w-full p-2 border rounded" />
                     <input required type="password" placeholder="Contraseña" value={loginPass} onChange={e=>setLoginPass(e.target.value)} className="w-full p-2 border rounded" />
                     <button type="submit" className="w-full bg-red-600 text-white py-2 rounded font-bold">Entrar</button>
                   </form>
                 ) : (
-                  <div className="space-y-4 text-xs">
-                    <div className="bg-gray-800 text-white p-3 rounded flex justify-between items-center shadow">
-                      <div>
-                        <p className="font-bold text-sm">{loggedCadete.name}</p>
-                        <p className="text-gray-300">Vehículo: {loggedCadete.vehicle}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs text-gray-400">Saldo App:</p>
-                        <p className={`text-base font-bold ${(Number(loggedCadete.balance) || 0) < APP_FEE ? 'text-red-400' : 'text-green-400'}`}>
-                          ${loggedCadete.balance || 0}
-                        </p>
-                      </div>
+                  <div className="space-y-4">
+                    <div className="bg-gray-800 text-white p-3 rounded flex justify-between items-center">
+                      <span className="font-bold">{loggedCadete.name}</span>
+                      <span className="text-green-400 font-bold">Saldo: ${loggedCadete.balance || 0}</span>
                     </div>
 
-                    <div className="border p-3 rounded bg-gray-50 flex justify-between items-center">
-                      <div>
-                        <p className="font-bold text-gray-800">Mi Estado:</p>
-                        <p className="text-gray-500 text-[11px]">Ponte en línea para ver y tomar envíos.</p>
-                      </div>
-                      <button 
-                        onClick={toggleCadeteOnlineStatus} 
-                        className={`px-3 py-1.5 rounded font-bold text-white shadow ${loggedCadete.isOnline ? 'bg-green-600' : 'bg-red-600'}`}>
-                        {loggedCadete.isOnline ? '🟢 EN LÍNEA' : '🔴 DESCONECTADO'}
-                      </button>
-                    </div>
-
-                    {/* ESTADÍSTICAS Y ACUMULADOS DEL CADETE */}
-                    {(() => {
-                      const cadeteCompletedOrders = orders.filter(o => o.cadeteId === loggedCadete.id && o.status === 'entregado');
-                      const totalDeliveredCount = cadeteCompletedOrders.length;
-                      const totalEarnedFees = cadeteCompletedOrders.reduce((sum, o) => sum + Math.round(o.deliveryFee || BASE_DELIVERY_FEE), 0);
-
-                      return (
-                        <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg shadow-sm space-y-2">
-                          <h3 className="font-bold text-blue-900 text-sm flex items-center gap-1.5">
-                            📊 Mis Estadísticas y Ganancias
-                          </h3>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="bg-white p-2 rounded border border-blue-100 text-center">
-                              <p className="text-gray-500 text-[10px]">Envíos Entregados:</p>
-                              <p className="text-base font-extrabold text-blue-700">{totalDeliveredCount}</p>
-                            </div>
-                            <div className="bg-white p-2 rounded border border-blue-100 text-center">
-                              <p className="text-gray-500 text-[10px]">Total en Envíos Cobrados:</p>
-                              <p className="text-base font-extrabold text-green-700">${totalEarnedFees}</p>
-                            </div>
+                    <div className="space-y-2">
+                      <h3 className="font-bold text-gray-800">Envíos Disponibles:</h3>
+                      {orders.filter(o => o.status === 'pendiente' || (o.cadeteId === loggedCadete.id && o.status !== 'entregado')).map(o => (
+                        <div key={o.id} className="border-2 border-blue-200 p-3 rounded-lg bg-gray-50 space-y-2">
+                          <div className="flex justify-between font-bold">
+                            <span>📦 Pedido #{o.id.slice(-4).toUpperCase()}</span>
+                            <span className="text-green-700">Envío: ${Math.round(o.deliveryFee || BASE_DELIVERY_FEE)}</span>
                           </div>
+                          <p>Cliente: {o.customerName} ({o.address})</p>
+                          
+                          <button 
+                            onClick={() => setActiveChatOrder(o)} 
+                            className="w-full bg-indigo-600 text-white py-1.5 rounded font-bold flex items-center justify-center gap-1">
+                            💬 Abrir Chat en Vivo
+                          </button>
+
+                          {o.status === 'pendiente' && (
+                            <button onClick={()=>handleAcceptOrder(o.id)} className="w-full bg-green-700 text-white py-2 rounded font-bold mt-1">
+                              Aceptar Envío (-${APP_FEE})
+                            </button>
+                          )}
+                          {o.status === 'tomado_por_cadete' && (
+                            <button onClick={()=>handleMarkAsOnTheWay(o.id)} className="w-full bg-green-600 text-white py-2 rounded font-bold">
+                              En Camino 🛵
+                            </button>
+                          )}
+                          {o.status === 'en_camino' && (
+                            <button onClick={()=>handleCompleteOrder(o.id)} className="w-full bg-orange-500 text-white py-2 rounded font-bold">
+                              Marcar Entregado ✅
+                            </button>
+                          )}
                         </div>
-                      );
-                    })()}
-
-                    {!loggedCadete.isOnline ? (
-                      <div className="bg-yellow-100 border border-yellow-400 text-yellow-800 p-3 rounded text-center font-bold">
-                        Estás desconectado. No verás envíos nuevos.
-                      </div>
-                    ) : (
-                      <>
-                        <h3 className="font-bold text-gray-800 border-b pb-1">Pedidos en Plataforma:</h3>
-                        {orders.filter(o => o.status === 'pendiente' || ((o.status === 'tomado_por_cadete' || o.status === 'en_camino') && o.cadeteId === loggedCadete.id)).map(o => {
-                          const mapsUrl = o.coords 
-                            ? `https://www.google.com/maps/search/?api=1&query=${o.coords.lat},${o.coords.lng}`
-                            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.address + ', Catuna, La Rioja')}`;
-
-                          const orderDeliveryFee = Math.round(o.deliveryFee || BASE_DELIVERY_FEE);
-
-                          return (
-                            <div key={o.id} className="border-2 border-blue-200 p-3 rounded-lg bg-gray-50 space-y-2.5">
-                              <div className="flex justify-between items-center bg-blue-600 text-white p-1.5 rounded font-extrabold shadow">
-                                <span>📦 Pedido #{o.id.slice(-4).toUpperCase()}</span>
-                                <span className="bg-white text-blue-700 px-2 py-0.5 rounded text-[11px]">Envío: ${orderDeliveryFee}</span>
-                              </div>
-                              
-                              <div className="bg-amber-50 border border-amber-200 p-2 rounded space-y-1">
-                                <p className="font-bold text-amber-900">📍 Ruta de Retiros:</p>
-                                {o.storesList ? o.storesList.map((s, sIdx) => (
-                                  <p key={sIdx} className="text-gray-700 text-[11px]">
-                                    <strong>Parada {sIdx + 1}:</strong> {s.storeName} ({s.storeAddress})
-                                  </p>
-                                )) : <p>Retirar en local</p>}
-                              </div>
-
-                              <p><strong>Cliente:</strong> {o.customerName}</p>
-                              <p><strong>Dirección:</strong> {o.address} {o.coords && <span className="text-blue-600 font-bold">📡 (GPS Exacto)</span>}</p>
-                              
-                              <div className="bg-yellow-100 p-2 rounded font-bold text-gray-900 space-y-1">
-                                <p>💳 Forma de Pago: <span className="text-red-600">{o.paymentMethod || 'Efectivo'}</span></p>
-                                {o.paymentMethod === 'Efectivo' ? (
-                                  <p className="text-xs text-green-800">
-                                    💵 Cobrar en mano al cliente (Productos + Envío): <strong>${Math.round(o.total)}</strong>
-                                  </p>
-                                ) : (
-                                  <p className="text-xs text-blue-800">
-                                    💳 Cliente ya transfirió los productos al local. Cobrar <strong>solo el Envío en efectivo</strong>: <strong>${orderDeliveryFee}</strong>
-                                  </p>
-                                )}
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-2 pt-1">
-                                <a 
-                                  href={`https://wa.me/549${o.customerPhone}?text=Hola%20${encodeURIComponent(o.customerName)},%20voy%20en%20camino%20con%20tu%20pedido%20%23${o.id.slice(-4).toUpperCase()}.`} 
-                                  target="_blank" 
-                                  className="bg-green-600 text-white py-1.5 px-2 rounded text-center font-bold">
-                                  💬 WhatsApp
-                                </a>
-                                <a 
-                                  href={mapsUrl} 
-                                  target="_blank" 
-                                  className="bg-blue-600 text-white py-1.5 px-2 rounded text-center font-bold">
-                                  📍 Google Maps
-                                </a>
-                              </div>
-
-                              {o.status === 'pendiente' && (
-                                <button onClick={()=>handleAcceptOrder(o.id)} className="w-full bg-green-700 text-white py-2 rounded font-bold shadow mt-2">
-                                  Aceptar Envío (-${APP_FEE} comisión app)
-                                </button>
-                              )}
-
-                              {o.status === 'tomado_por_cadete' && (
-                                <div className="space-y-1.5 pt-2">
-                                  <button onClick={()=>handleMarkAsOnTheWay(o.id)} className="w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded font-bold shadow animate-pulse">
-                                    📦 Ya Retiré el Pedido / Voy en Camino 🛵
-                                  </button>
-                                  <button onClick={()=>handleRejectOrder(o.id)} className="w-full bg-red-600 text-white py-1.5 rounded font-bold text-[11px]">
-                                    ❌ Rechazar / Liberar Envío
-                                  </button>
-                                </div>
-                              )}
-
-                              {o.status === 'en_camino' && (
-                                <div className="space-y-1.5 pt-2">
-                                  <button onClick={()=>handleCompleteOrder(o.id)} className="w-full bg-orange-500 text-white py-2 rounded font-bold">
-                                    Marcar Entregado
-                                  </button>
-                                  <button onClick={()=>handleRejectOrder(o.id)} className="w-full bg-red-600 text-white py-1.5 rounded font-bold text-[11px]">
-                                    ❌ Rechazar / Liberar Envío
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </>
-                    )}
-
-                    {/* HISTORIAL DE PEDIDOS ENTREGADOS DEL CADETE */}
-                    <div className="border p-3 rounded bg-gray-50 space-y-2 mt-4">
-                      <h3 className="font-bold text-gray-800 text-sm">📜 Historial de Envíos Entregados</h3>
-                      {orders.filter(o => o.cadeteId === loggedCadete.id && o.status === 'entregado').length === 0 ? (
-                        <p className="text-gray-400 italic text-[11px]">Aún no has completado ningún envío.</p>
-                      ) : (
-                        orders.filter(o => o.cadeteId === loggedCadete.id && o.status === 'entregado').map(o => (
-                          <div key={o.id} className="bg-white p-2.5 rounded border space-y-1 shadow-sm">
-                            <div className="flex justify-between items-center">
-                              <span className="font-bold text-red-600">Pedido #{o.id.slice(-4).toUpperCase()}</span>
-                              <span className="text-[10px] bg-green-100 text-green-800 px-2 py-0.5 rounded font-bold">✅ Entregado</span>
-                            </div>
-                            <p className="text-gray-700 text-[11px]"><strong>Cliente:</strong> {o.customerName} ({o.address})</p>
-                            <p className="text-gray-600 text-[10px]">Ganancia por Envío: <strong className="text-green-700">${Math.round(o.deliveryFee || BASE_DELIVERY_FEE)}</strong></p>
-                          </div>
-                        ))
-                      )}
+                      ))}
                     </div>
                   </div>
                 )}
@@ -1543,188 +748,69 @@
                     <button type="submit" className="w-full bg-gray-800 text-white py-2 rounded font-bold">Entrar</button>
                   </form>
                 ) : (
-                  <div className="space-y-5">
+                  <div className="space-y-4">
                     <div className="flex justify-between items-center bg-gray-800 text-white p-2 rounded">
                       <span className="font-bold">Panel Administrador</span>
                       <button onClick={()=>setIsAdminLogged(false)} className="text-red-300 font-bold underline">Salir</button>
                     </div>
 
-                    <form onSubmit={handleCreateStore} className="border p-3 rounded bg-red-50 border-red-200 space-y-2">
-                      <h3 className="font-bold text-red-900 text-sm">🏪 Registrar Nuevo Comercio</h3>
-                      <input required placeholder="Nombre del Comercio" value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} className="w-full p-2 border rounded bg-white" />
-                      <input required placeholder="Dirección" value={newStoreAddress} onChange={e=>setNewStoreAddress(e.target.value)} className="w-full p-2 border rounded bg-white" />
-                      <input required placeholder="Teléfono / WhatsApp (Ej: 3826123456)" value={newStorePhone} onChange={e=>setNewStorePhone(e.target.value)} className="w-full p-2 border rounded bg-white" />
-                      <input placeholder="Alias de Mercado Pago del Comercio" value={newStoreAlias} onChange={e=>setNewStoreAlias(e.target.value)} className="w-full p-2 border rounded bg-white" />
-                      <input placeholder="Titular de la cuenta MP" value={newStoreTitular} onChange={e=>setNewStoreTitular(e.target.value)} className="w-full p-2 border rounded bg-white" />
-                      <input placeholder="Horario de Atención (Ej: 08:00 a 23:00 hs)" value={newStoreHours} onChange={e=>setNewStoreHours(e.target.value)} className="w-full p-2 border rounded bg-white" />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input required placeholder="Usuario para entrar" value={newStoreUser} onChange={e=>setNewStoreUser(e.target.value)} className="w-full p-2 border rounded bg-white" />
-                        <input required placeholder="Clave para entrar" value={newStorePass} onChange={e=>setNewStorePass(e.target.value)} className="w-full p-2 border rounded bg-white" />
-                      </div>
-                      <button type="submit" className="w-full bg-red-600 text-white py-2 rounded font-bold shadow hover:bg-red-700">
-                        Crear Comercio 🚀
-                      </button>
+                    <form onSubmit={handleCreateStore} className="border p-3 rounded bg-red-50 space-y-2">
+                      <h3 className="font-bold text-red-900 text-sm">🏪 Registrar Comercio</h3>
+                      <input required placeholder="Nombre" value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <input required placeholder="Usuario" value={newStoreUser} onChange={e=>setNewStoreUser(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <input required placeholder="Contraseña" value={newStorePass} onChange={e=>setNewStorePass(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <button type="submit" className="w-full bg-red-600 text-white py-2 rounded font-bold">Crear Comercio</button>
                     </form>
 
-                    <form onSubmit={handleCreateCadete} className="border p-3 rounded bg-blue-50 border-blue-200 space-y-2">
-                      <h3 className="font-bold text-blue-900 text-sm">🛵 Registrar Nuevo Cadete / Repartidor</h3>
-                      <input required placeholder="Nombre Completo del Cadete" value={newCadeteName} onChange={e=>setNewCadeteName(e.target.value)} className="w-full p-2 border rounded bg-white" />
-                      <input required placeholder="Teléfono / WhatsApp (Ej: 3826123456)" value={newCadetePhone} onChange={e=>setNewCadetePhone(e.target.value)} className="w-full p-2 border rounded bg-white" />
-                      <select value={newCadeteVehicle} onChange={e=>setNewCadeteVehicle(e.target.value)} className="w-full p-2 border rounded bg-white font-bold">
-                        <option value="Moto">Moto</option>
-                        <option value="Bicicleta">Bicicleta</option>
-                        <option value="Auto">Auto</option>
-                      </select>
-                      <div className="grid grid-cols-2 gap-2">
-                        <input required placeholder="Usuario para entrar" value={newCadeteUser} onChange={e=>setNewCadeteUser(e.target.value)} className="w-full p-2 border rounded bg-white" />
-                        <input required placeholder="Clave para entrar" value={newCadetePass} onChange={e=>setNewCadetePass(e.target.value)} className="w-full p-2 border rounded bg-white" />
-                      </div>
-                      <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold shadow hover:bg-blue-700">
-                        Crear Cadete 🛵
-                      </button>
+                    <form onSubmit={handleCreateCadete} className="border p-3 rounded bg-blue-50 space-y-2">
+                      <h3 className="font-bold text-blue-900 text-sm">🛵 Registrar Cadete</h3>
+                      <input required placeholder="Nombre" value={newCadeteName} onChange={e=>setNewCadeteName(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <input required placeholder="Usuario" value={newCadeteUser} onChange={e=>setNewCadeteUser(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <input required placeholder="Contraseña" value={newCadetePass} onChange={e=>setNewCadetePass(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold">Crear Cadete</button>
                     </form>
-
-                    <div className="border p-3 rounded bg-orange-50 border-orange-200 space-y-2">
-                      <h3 className="font-bold text-orange-900 text-sm">📊 Rendición de Comisiones (5% Semanal)</h3>
-                      <p className="text-[11px] text-orange-800">Cuando el comercio te transfiera, haz clic en <strong>"Marcar como Cobrado"</strong> para saldar su deuda a $0.</p>
-                      
-                      {stores.map(store => {
-                        const storeOrders = orders.filter(o => {
-                          const hasStore = o.storeId === store.id || (o.storesInvolved && o.storesInvolved.includes(store.id));
-                          return hasStore && o.status === 'entregado' && !o.storeSettled;
-                        });
-                        
-                        const totalSales = storeOrders.reduce((sum, o) => {
-                          if (o.storesList) {
-                            const myStorePart = o.storesList.find(s => s.storeId === store.id);
-                            if (myStorePart) return sum + myStorePart.items.reduce((s, i) => s + (i.price * i.quantity), 0);
-                          }
-                          return sum + (o.subtotal || 0);
-                        }, 0);
-
-                        const commissionDue = Math.round(totalSales * STORE_COMMISSION_PERCENT);
-
-                        return (
-                          <div key={store.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
-                            <div>
-                              <p className="font-bold text-gray-800">{store.name}</p>
-                              <p className="text-gray-600">Ventas: <strong>${Math.round(totalSales)}</strong></p>
-                              <p className="text-orange-700 font-bold">Comisión 5%: ${commissionDue}</p>
-                            </div>
-                            <button 
-                              onClick={()=>handleResetStoreCommission(store.id, store.name)}
-                              disabled={commissionDue === 0}
-                              className={`px-2.5 py-1.5 rounded font-bold text-white ${commissionDue > 0 ? 'bg-green-600 hover:bg-green-700 shadow' : 'bg-gray-300 cursor-not-allowed'}`}>
-                              {commissionDue > 0 ? '✅ Marcar como Cobrado' : 'Al día'}
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <div className="border p-3 rounded bg-green-50 border-green-200 space-y-2">
-                      <h3 className="font-bold text-green-900 text-sm">📱 Agenda de WhatsApp y Alias de Comercios</h3>
-                      <p className="text-[11px] text-green-800">Números directos de los comercios para coordinar la comisión o comunicarte:</p>
-                      {stores.length === 0 ? (
-                        <p className="text-gray-500 italic">No hay comercios registrados aún.</p>
-                      ) : (
-                        stores.map(store => (
-                          <div key={store.id} className="bg-white p-2.5 rounded border space-y-1">
-                            <div className="flex justify-between items-center">
-                              <p className="font-bold text-gray-800 text-xs">🏪 {store.name}</p>
-                              {store.phone && (
-                                <a 
-                                  href={`https://wa.me/549${store.phone}?text=Hola%20${encodeURIComponent(store.name)},%20te%20escribo%20desde%20Catuna%20Pedidos%20por%20el%20cierre%20de%20comisión%20de%20la%20semana.`} 
-                                  target="_blank" 
-                                  className="bg-green-600 text-white px-2 py-1 rounded text-[10px] font-bold shadow hover:bg-green-700 flex items-center gap-1">
-                                  💬 Abrir WhatsApp
-                                </a>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-gray-600">📞 Tel: <strong>{store.phone || 'No registrado'}</strong></p>
-                            <p className="text-[11px] text-gray-600">💳 Alias: <span className="font-mono font-bold select-all">{store.alias || 'No registrado'}</span></p>
-                          </div>
-                        ))
-                      )}
-                    </div>
-
-                    <div className="border p-3 rounded bg-blue-50 border-blue-200 space-y-3">
-                      <h3 className="font-bold text-blue-900 text-sm">🛵 Recargar Saldo a Cadete</h3>
-                      <form onSubmit={handleRechargeBalance} className="space-y-2">
-                        <select 
-                          required 
-                          value={selectedCadeteId} 
-                          onChange={(e)=>setSelectedCadeteId(e.target.value)} 
-                          className="w-full p-2 border rounded bg-white text-xs font-bold">
-                          <option value="">Seleccionar Cadete...</option>
-                          {cadetes.map(c => (
-                            <option key={c.id} value={c.id}>{c.name} (Saldo actual: ${c.balance || 0})</option>
-                          ))}
-                        </select>
-                        <input 
-                          required 
-                          type="number" 
-                          placeholder="Monto a recargar ($)" 
-                          value={rechargeAmount} 
-                          onChange={(e)=>setRechargeAmount(e.target.value)} 
-                          className="w-full p-2 border rounded bg-white" 
-                        />
-                        <button type="submit" className="w-full bg-blue-600 text-white py-1.5 rounded font-bold shadow">
-                          Acreditar Saldo ➕
-                        </button>
-                      </form>
-                    </div>
-
-                    <form onSubmit={handlePublishAnnouncement} className="border p-3 rounded bg-amber-50 border-amber-300 space-y-2">
-                      <h3 className="font-bold text-amber-900 text-sm">📢 Anuncio Global para Clientes</h3>
-                      <input placeholder="Ej: ¡Hoy horario especial por feriado!" value={announcementInput} onChange={e=>setAnnouncementInput(e.target.value)} className="w-full p-2 border rounded bg-white" />
-                      <div className="flex gap-2">
-                        <button type="submit" className="flex-1 bg-amber-600 text-white py-1.5 rounded font-bold">Publicar</button>
-                        {globalAnnouncement && <button type="button" onClick={handleClearAnnouncement} className="bg-red-600 text-white px-3 py-1.5 rounded font-bold">Borrar</button>}
-                      </div>
-                    </form>
-
-                    <div className="border p-3 rounded bg-gray-50 space-y-2">
-                      <h3 className="font-bold text-gray-800 text-sm">🏪 Comercios Registrados</h3>
-                      {stores.map(store => (
-                        <div key={store.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
-                          <div>
-                            <p className="font-bold text-gray-800">{store.name}</p>
-                            <p className="text-[10px] text-gray-500">Usuario: {store.user}</p>
-                          </div>
-                          <div className="flex gap-1">
-                            <button 
-                              onClick={() => handleToggleStoreSuspension(store.id, store.isSuspended)} 
-                              className={`font-bold px-2 py-1 rounded text-[10px] text-white ${store.isSuspended ? 'bg-green-600' : 'bg-orange-500'}`}>
-                              {store.isSuspended ? 'Activar' : 'Pausar'}
-                            </button>
-                            <button onClick={() => handleDeleteStore(store.id, store.name)} className="bg-red-600 text-white font-bold px-2 py-1 rounded text-[10px]">🗑️</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="border p-3 rounded bg-gray-50 space-y-2">
-                      <h3 className="font-bold text-gray-800 text-sm">🛵 Cadetes Registrados</h3>
-                      {cadetes.map(cadete => (
-                        <div key={cadete.id} className="bg-white p-2.5 rounded border flex justify-between items-center">
-                          <div>
-                            <p className="font-bold text-gray-800">{cadete.name} ({cadete.vehicle})</p>
-                            <p className="text-gray-500 text-[10px]">Saldo: ${cadete.balance || 0} | Usuario: {cadete.user}</p>
-                          </div>
-                          <div className="flex gap-1">
-                            <button 
-                              onClick={() => handleToggleCadeteSuspension(cadete.id, cadete.isSuspended)} 
-                              className={`font-bold px-2 py-1 rounded text-[10px] text-white ${cadete.isSuspended ? 'bg-green-600' : 'bg-orange-500'}`}>
-                              {cadete.isSuspended ? 'Activar' : 'Pausar'}
-                            </button>
-                            <button onClick={() => handleDeleteCadete(cadete.id, cadete.name)} className="bg-red-600 text-white font-bold px-2 py-1 rounded text-[10px]">🗑️</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* MODAL VENTANA DE CHAT INTERNO EN TIEMPO REAL */}
+            {activeChatOrder && (
+              <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-3 max-w-md mx-auto">
+                <div className="bg-white rounded-xl w-full h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+                  <div className="bg-indigo-700 text-white p-3 flex justify-between items-center">
+                    <div>
+                      <h3 className="font-extrabold text-sm">💬 Chat Pedido #{activeChatOrder.id.slice(-4).toUpperCase()}</h3>
+                      <p className="text-[10px] text-indigo-200">Cliente, Comercio y Cadete en vivo</p>
+                    </div>
+                    <button onClick={() => setActiveChatOrder(null)} className="text-white font-extrabold text-sm bg-indigo-900 px-2.5 py-1 rounded">✕</button>
+                  </div>
+
+                  <div className="flex-1 p-3 overflow-y-auto space-y-2 bg-gray-50 text-xs">
+                    {chatMessages.length === 0 ? (
+                      <p className="text-center text-gray-400 italic py-10">Inicia la conversación...</p>
+                    ) : (
+                      chatMessages.map(msg => (
+                        <div key={msg.id} className={`p-2 rounded-lg max-w-[80%] ${msg.senderRole === 'Cliente' ? 'bg-blue-100 text-blue-950 ml-auto' : msg.senderRole === 'Comercio' ? 'bg-red-100 text-red-950' : 'bg-green-100 text-green-950'}`}>
+                          <p className="font-extrabold text-[10px] opacity-75">{msg.senderName} ({msg.senderRole})</p>
+                          <p className="text-xs font-semibold mt-0.5">{msg.text}</p>
+                        </div>
+                      ))
+                    )}
+                    <div ref={chatEndRef} />
+                  </div>
+
+                  <form onSubmit={sendMessage} className="p-2 border-t flex gap-2 bg-white">
+                    <input 
+                      type="text" 
+                      placeholder="Escribe un mensaje..." 
+                      value={newMessageText} 
+                      onChange={e=>setNewMessageText(e.target.value)} 
+                      className="flex-1 p-2 text-xs border rounded focus:outline-none focus:border-indigo-600"
+                    />
+                    <button type="submit" className="bg-indigo-600 text-white font-extrabold px-4 py-2 rounded text-xs">Enviar</button>
+                  </form>
+                </div>
               </div>
             )}
 
