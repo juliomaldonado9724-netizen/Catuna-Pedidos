@@ -41,12 +41,6 @@
     function App() {
       const [currentTab, setCurrentTab] = useState('cliente');
 
-      const ADMIN_PAYMENT_INFO = {
-        alias: "Juliomaldonado132",
-        titular: "Julio Nicolás Maldonado",
-        banco: "Mercado Pago"
-      };
-
       const STORE_COMMISSION_PERCENT = 0.05; // 5% comisión
       const APP_FEE = 300; 
       const BASE_DELIVERY_FEE = 1500; 
@@ -165,6 +159,7 @@
       const [loggedStore, setLoggedStore] = useState(null);
       const [loggedCadete, setLoggedCadete] = useState(null);
 
+      // Estados de Productos y Promociones por horas
       const [prodName, setProdName] = useState('');
       const [prodPrice, setProdPrice] = useState('');
       const [prodUnit, setProdUnit] = useState('Unidad');
@@ -211,21 +206,18 @@
       const [custAddress, setCustAddress] = useState('');
       const [custCoords, setCustCoords] = useState(null);
       const [paymentMethod, setPaymentMethod] = useState('Efectivo');
-      const [isGettingLocation, setIsGettingLocation] = useState(false);
       const [lastOrderId, setLastOrderId] = useState(null);
 
       const handleGetLocationGPS = () => {
         if (!navigator.geolocation) { alert("Tu navegador no soporta geolocalización."); return; }
-        setIsGettingLocation(true);
         navigator.geolocation.getCurrentPosition(
           (pos) => {
             const lat = pos.coords.latitude, lng = pos.coords.longitude;
             setCustCoords({ lat, lng });
             setCustAddress(`📍 GPS exacto (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
-            setIsGettingLocation(false);
-            alert("Ubicación obtenida con éxito.");
+            alert("Ubicación obtenida.");
           },
-          () => { setIsGettingLocation(false); alert("No se obtuvo la ubicación."); },
+          () => alert("No se obtuvo la ubicación GPS."),
           { enableHighAccuracy: true }
         );
       };
@@ -273,18 +265,6 @@
         } catch (err) { alert("Error: " + err.message); }
       };
 
-      const handleToggleCadeteSuspension = async (cadeteId, currentStatus) => {
-        try { await db.collection('cadetes').doc(cadeteId).update({ isSuspended: !currentStatus }); alert("Estado actualizado."); } 
-        catch (err) { alert("Error: " + err.message); }
-      };
-
-      const handleDeleteCadete = async (cadeteId, cadeteName) => {
-        if (confirm(`¿Eliminar al repartidor "${cadeteName}"?`)) {
-          try { await db.collection('cadetes').doc(cadeteId).delete(); alert("Cadete eliminado."); } 
-          catch (err) { alert("Error: " + err.message); }
-        }
-      };
-
       const handlePublishAnnouncement = async (e) => {
         e.preventDefault();
         try {
@@ -307,23 +287,8 @@
         try {
           await db.collection('cadetes').doc(selectedCadeteId).update({ balance: (Number(cadeteDoc.balance) || 0) + amount });
           setRechargeAmount('');
-          alert("¡Saldo acreditado correctamente en la nube!");
+          alert("¡Saldo acreditado correctamente!");
         } catch (err) { alert("Error al recargar saldo: " + err.message); }
-      };
-
-      const handleResetStoreCommission = async (storeId, storeName) => {
-        if (confirm(`¿Saldar comisiones pendientes de "${storeName}"?`)) {
-          try {
-            const batch = db.batch();
-            const storeOrders = orders.filter(o => {
-              const hasStore = o.storeId === storeId || (o.storesInvolved && o.storesInvolved.includes(storeId));
-              return hasStore && o.status === 'entregado' && !o.storeSettled;
-            });
-            if (storeOrders.length === 0) { alert("No hay comisiones pendientes."); return; }
-            storeOrders.forEach(o => { batch.update(db.collection('orders').doc(o.id), { storeSettled: true }); });
-            await batch.commit(); alert(`Comisión de "${storeName}" saldada a $0.`);
-          } catch (err) { alert("Error: " + err.message); }
-        }
       };
 
       const handleStoreLogin = (e) => {
@@ -335,15 +300,18 @@
         } else { alert("Usuario o clave incorrectos"); }
       };
 
+      // RESTAURADO: Abrir y Cerrar Comercio
       const toggleStoreOpenStatus = async () => {
         if (!loggedStore) return;
         const updatedStatus = !loggedStore.isOpen;
         try {
           await db.collection('stores').doc(loggedStore.id).update({ isOpen: updatedStatus });
           setLoggedStore({ ...loggedStore, isOpen: updatedStatus });
+          alert(`Comercio marcado como ${updatedStatus ? 'ABIERTO 🟢' : 'CERRADO 🔴'}`);
         } catch (err) { alert("Error: " + err.message); }
       };
 
+      // RESTAURADO: Carga de Ofertas y Promociones con duración por horas (6h, 24h, 48h)
       const handleAddProduct = async (e) => {
         e.preventDefault();
         if (!loggedStore || isCompressing) return;
@@ -355,7 +323,7 @@
             image: prodImg || 'https://via.placeholder.com/150', createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
           setProdName(''); setProdPrice(''); setProdUnit('Unidad'); setProdCategory('General'); setProdIsPromo(false); setProdPromoHours('24'); setProdDesc(''); setProdImg('');
-          alert("Producto guardado.");
+          alert("Producto / Promoción guardada con éxito.");
         } catch (err) { alert("Error: " + err.message); }
       };
 
@@ -392,7 +360,7 @@
           await db.collection('cadetes').doc(loggedCadete.id).update({ balance: newBalance });
           await db.collection('orders').doc(orderId).update({ status: 'tomado_por_cadete', cadeteId: loggedCadete.id });
           setLoggedCadete({ ...loggedCadete, balance: newBalance });
-          alert("¡Envío aceptado! Se ha notificado en la aplicación.");
+          alert("¡Envío aceptado!");
         } catch (err) { alert("Error: " + err.message); }
       };
 
@@ -406,23 +374,10 @@
         catch (err) { alert("Error: " + err.message); }
       };
 
-      const handleRejectOrder = async (orderId) => {
-        if (!loggedCadete) return;
-        if (confirm("¿Rechazar envío y recuperar los $" + APP_FEE + " de saldo?")) {
-          try {
-            const newBalance = (Number(loggedCadete.balance) || 0) + APP_FEE;
-            await db.collection('cadetes').doc(loggedCadete.id).update({ balance: newBalance });
-            await db.collection('orders').doc(orderId).update({ status: 'pendiente', cadeteId: null });
-            setLoggedCadete({ ...loggedCadete, balance: newBalance });
-            alert("Envío liberado.");
-          } catch (err) { alert("Error: " + err.message); }
-        }
-      };
-
       const addToCart = (product, store) => {
         const onlineCadetesCount = cadetes.filter(c => c.isOnline && !c.isSuspended).length;
         if (onlineCadetesCount === 0) { alert("⚠️ No hay cadetes en línea disponibles."); return; }
-        if (!store.isOpen || store.isSuspended) { alert("Negocio no disponible."); return; }
+        if (!store.isOpen || store.isSuspended) { alert("Negocio cerrado o no disponible."); return; }
 
         const qtyToAdd = Number(selectedQtyMap[product.id]) || 1;
         if (qtyToAdd <= 0) return;
@@ -434,12 +389,6 @@
           setCart([...cart, { ...product, storeId: store.id, storeName: store.name, storeAddress: store.address, storePhone: store.phone, quantity: qtyToAdd }]);
         }
         setIsCartOpen(true);
-      };
-
-      const updateCartItemQuantity = (productId, newQty) => {
-        const qty = Number(newQty);
-        if (qty <= 0) setCart(cart.filter(item => item.id !== productId));
-        else setCart(cart.map(item => item.id === productId ? { ...item, quantity: qty } : item));
       };
 
       const cartSubtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -491,7 +440,6 @@
       });
 
       const onlineCadetesCount = cadetes.filter(c => c.isOnline && !c.isSuspended).length;
-      const promoProducts = products.filter(p => p.isPromo && (!p.promoExpiresAt || currentTime <= p.promoExpiresAt));
       const activeLiveOrder = orders.find(o => o.id === lastOrderId);
 
       return (
@@ -575,7 +523,10 @@
                         <div key={prod.id} className="flex gap-3 bg-white p-2 rounded border items-center">
                           <img src={prod.image} className="w-14 h-14 object-cover rounded bg-gray-200" alt={prod.name} />
                           <div className="flex-1">
-                            <p className="font-bold text-sm text-gray-800">{prod.name}</p>
+                            <div className="flex items-center gap-1">
+                              <p className="font-bold text-sm text-gray-800">{prod.name}</p>
+                              {prod.isPromo && <span className="bg-amber-500 text-white text-[9px] px-1 rounded font-extrabold">OFERTA</span>}
+                            </div>
                             <p className="text-xs text-gray-500">{prod.description}</p>
                             <p className="text-xs font-bold text-red-600">${prod.price}</p>
                           </div>
@@ -648,9 +599,15 @@
                   </form>
                 ) : (
                   <div className="space-y-4">
-                    <div className="flex justify-between items-center bg-gray-100 p-2.5 rounded border">
-                      <span className="font-bold text-gray-800">{loggedStore.name}</span>
-                      <button onClick={()=>setLoggedStore(null)} className="text-red-600 font-bold underline">Salir</button>
+                    {/* RESTAURADO: ESTADO ABIERTO / CERRADO */}
+                    <div className="flex justify-between items-center bg-gray-100 p-3 rounded border">
+                      <div>
+                        <span className="font-bold text-gray-800 text-sm">{loggedStore.name}</span>
+                        <p className="text-[10px] text-gray-500">Estado actual: <strong className={loggedStore.isOpen ? 'text-green-600':'text-red-600'}>{loggedStore.isOpen ? 'ABIERTO' : 'CERRADO'}</strong></p>
+                      </div>
+                      <button onClick={toggleStoreOpenStatus} className={`px-3 py-1.5 rounded font-bold text-white shadow ${loggedStore.isOpen ? 'bg-red-600' : 'bg-green-600'}`}>
+                        {loggedStore.isOpen ? '🔴 Cerrar Local' : '🟢 Abrir Local'}
+                      </button>
                     </div>
 
                     <div className="space-y-2">
@@ -671,13 +628,53 @@
                       ))}
                     </div>
 
+                    {/* RESTAURADO: FORMULARIO CON PROMOCIONES Y OFERTAS TEMPORALES */}
                     <form onSubmit={handleAddProduct} className="border p-3 rounded bg-gray-50 space-y-2 mt-4">
-                      <h3 className="font-bold text-gray-800">Cargar Producto</h3>
-                      <input required placeholder="Nombre" value={prodName} onChange={e=>setProdName(e.target.value)} className="w-full p-2 border rounded" />
+                      <h3 className="font-bold text-gray-800 text-sm">➕ Cargar Producto / Oferta</h3>
+                      <input required placeholder="Nombre del Producto / Combo" value={prodName} onChange={e=>setProdName(e.target.value)} className="w-full p-2 border rounded" />
                       <input required type="number" placeholder="Precio ($)" value={prodPrice} onChange={e=>setProdPrice(e.target.value)} className="w-full p-2 border rounded" />
-                      <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs" />
-                      <button type="submit" className="w-full bg-green-600 text-white py-2 rounded font-bold">Guardar Producto</button>
+                      <input placeholder="Descripción (Ingredientes, detalles...)" value={prodDesc} onChange={e=>setProdDesc(e.target.value)} className="w-full p-2 border rounded" />
+                      
+                      <div className="bg-amber-50 p-2.5 rounded border border-amber-200 space-y-2">
+                        <label className="flex items-center gap-2 font-bold text-amber-900 cursor-pointer">
+                          <input type="checkbox" checked={prodIsPromo} onChange={e=>setProdIsPromo(e.target.checked)} className="w-4 h-4" />
+                          <span>¿Es una Oferta / Promoción Especial?</span>
+                        </label>
+                        {prodIsPromo && (
+                          <div>
+                            <p className="text-[10px] text-amber-800 font-bold">Duración de la oferta:</p>
+                            <select value={prodPromoHours} onChange={e=>setProdPromoHours(e.target.value)} className="w-full p-1.5 border rounded bg-white font-bold">
+                              <option value="6">6 Horas</option>
+                              <option value="24">24 Horas (1 Día)</option>
+                              <option value="48">48 Horas (2 Días)</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-600">Foto del producto:</p>
+                        <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs" />
+                      </div>
+
+                      <button type="submit" disabled={isCompressing} className="w-full bg-green-600 text-white py-2 rounded font-bold shadow">
+                        {isCompressing ? 'Procesando imagen...' : 'Guardar Producto / Promo'}
+                      </button>
                     </form>
+
+                    {/* RESTAURADO: LISTA DE PRODUCTOS DEL COMERCIO */}
+                    <div className="space-y-2 pt-2">
+                      <h3 className="font-bold text-gray-800">Mi Catálogo Cargado:</h3>
+                      {products.filter(p => p.storeId === loggedStore.id).map(p => (
+                        <div key={p.id} className="flex justify-between items-center bg-white p-2 rounded border">
+                          <div>
+                            <p className="font-bold">{p.name} {p.isPromo && <span className="text-[9px] bg-amber-500 text-white px-1 rounded">OFERTA</span>}</p>
+                            <p className="text-gray-500">${p.price}</p>
+                          </div>
+                          <button onClick={() => handleDeleteProduct(p.id, p.name)} className="bg-red-500 text-white px-2 py-1 rounded font-bold text-[10px]">Borrar</button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -701,7 +698,7 @@
                     </div>
 
                     <div className="border p-3 rounded bg-gray-50 flex justify-between items-center">
-                      <span>Mi Estado:</span>
+                      <span>Mi Estado de Trabajo:</span>
                       <button onClick={toggleCadeteOnlineStatus} className={`px-3 py-1 rounded text-white font-bold ${loggedCadete.isOnline ? 'bg-green-600' : 'bg-red-600'}`}>
                         {loggedCadete.isOnline ? '🟢 EN LÍNEA' : '🔴 DESCONECTADO'}
                       </button>
@@ -778,7 +775,6 @@
                       <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold">Crear Cadete</button>
                     </form>
 
-                    {/* SECCIÓN RESTAURADA: RECARGAR SALDO A CADETE */}
                     <div className="border p-3 rounded bg-blue-50 border-blue-200 space-y-3">
                       <h3 className="font-bold text-blue-900 text-sm">🛵 Recargar Saldo a Cadete</h3>
                       <form onSubmit={handleRechargeBalance} className="space-y-2">
