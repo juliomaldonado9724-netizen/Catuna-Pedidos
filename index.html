@@ -61,7 +61,7 @@
       const [currentTime, setCurrentTime] = useState(Date.now());
       const [isCartOpen, setIsCartOpen] = useState(false);
 
-      // Estado para Modal de Chat Interno
+      // Chat en Vivo
       const [activeChatOrder, setActiveChatOrder] = useState(null);
       const [chatMessages, setChatMessages] = useState([]);
       const [newMessageText, setNewMessageText] = useState('');
@@ -96,7 +96,6 @@
         };
       }, []);
 
-      // Listener de Chat en Vivo cuando hay un pedido activo seleccionado
       useEffect(() => {
         if (!activeChatOrder) return;
         const unsubChat = db.collection('orders').doc(activeChatOrder.id)
@@ -216,10 +215,7 @@
       const [lastOrderId, setLastOrderId] = useState(null);
 
       const handleGetLocationGPS = () => {
-        if (!navigator.geolocation) {
-          alert("Tu navegador no soporta geolocalización.");
-          return;
-        }
+        if (!navigator.geolocation) { alert("Tu navegador no soporta geolocalización."); return; }
         setIsGettingLocation(true);
         navigator.geolocation.getCurrentPosition(
           (pos) => {
@@ -229,10 +225,7 @@
             setIsGettingLocation(false);
             alert("Ubicación obtenida con éxito.");
           },
-          () => {
-            setIsGettingLocation(false);
-            alert("No se obtuvo la ubicación. Verifica los permisos de GPS.");
-          },
+          () => { setIsGettingLocation(false); alert("No se obtuvo la ubicación."); },
           { enableHighAccuracy: true }
         );
       };
@@ -313,8 +306,9 @@
         if (!cadeteDoc) return;
         try {
           await db.collection('cadetes').doc(selectedCadeteId).update({ balance: (Number(cadeteDoc.balance) || 0) + amount });
-          setRechargeAmount(''); alert("Saldo acreditado.");
-        } catch (err) { alert("Error: " + err.message); }
+          setRechargeAmount('');
+          alert("¡Saldo acreditado correctamente en la nube!");
+        } catch (err) { alert("Error al recargar saldo: " + err.message); }
       };
 
       const handleResetStoreCommission = async (storeId, storeName) => {
@@ -499,7 +493,6 @@
       const onlineCadetesCount = cadetes.filter(c => c.isOnline && !c.isSuspended).length;
       const promoProducts = products.filter(p => p.isPromo && (!p.promoExpiresAt || currentTime <= p.promoExpiresAt));
       const activeLiveOrder = orders.find(o => o.id === lastOrderId);
-      const activeCadete = activeLiveOrder ? cadetes.find(c => c.id === activeLiveOrder.cadeteId) : null;
 
       return (
         <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl relative pb-24">
@@ -545,7 +538,7 @@
 
                     <button 
                       onClick={() => setActiveChatOrder(activeLiveOrder)} 
-                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2 rounded.lg shadow flex items-center justify-center gap-2 text-xs">
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2 rounded-lg shadow flex items-center justify-center gap-2 text-xs">
                       💬 Abrir Chat del Pedido (En Vivo)
                     </button>
                   </div>
@@ -677,6 +670,14 @@
                         </div>
                       ))}
                     </div>
+
+                    <form onSubmit={handleAddProduct} className="border p-3 rounded bg-gray-50 space-y-2 mt-4">
+                      <h3 className="font-bold text-gray-800">Cargar Producto</h3>
+                      <input required placeholder="Nombre" value={prodName} onChange={e=>setProdName(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required type="number" placeholder="Precio ($)" value={prodPrice} onChange={e=>setProdPrice(e.target.value)} className="w-full p-2 border rounded" />
+                      <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs" />
+                      <button type="submit" className="w-full bg-green-600 text-white py-2 rounded font-bold">Guardar Producto</button>
+                    </form>
                   </div>
                 )}
               </div>
@@ -697,6 +698,13 @@
                     <div className="bg-gray-800 text-white p-3 rounded flex justify-between items-center">
                       <span className="font-bold">{loggedCadete.name}</span>
                       <span className="text-green-400 font-bold">Saldo: ${loggedCadete.balance || 0}</span>
+                    </div>
+
+                    <div className="border p-3 rounded bg-gray-50 flex justify-between items-center">
+                      <span>Mi Estado:</span>
+                      <button onClick={toggleCadeteOnlineStatus} className={`px-3 py-1 rounded text-white font-bold ${loggedCadete.isOnline ? 'bg-green-600' : 'bg-red-600'}`}>
+                        {loggedCadete.isOnline ? '🟢 EN LÍNEA' : '🔴 DESCONECTADO'}
+                      </button>
                     </div>
 
                     <div className="space-y-2">
@@ -769,12 +777,49 @@
                       <input required placeholder="Contraseña" value={newCadetePass} onChange={e=>setNewCadetePass(e.target.value)} className="w-full p-2 border rounded bg-white" />
                       <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold">Crear Cadete</button>
                     </form>
+
+                    {/* SECCIÓN RESTAURADA: RECARGAR SALDO A CADETE */}
+                    <div className="border p-3 rounded bg-blue-50 border-blue-200 space-y-3">
+                      <h3 className="font-bold text-blue-900 text-sm">🛵 Recargar Saldo a Cadete</h3>
+                      <form onSubmit={handleRechargeBalance} className="space-y-2">
+                        <select 
+                          required 
+                          value={selectedCadeteId} 
+                          onChange={(e)=>setSelectedCadeteId(e.target.value)} 
+                          className="w-full p-2 border rounded bg-white text-xs font-bold">
+                          <option value="">Seleccionar Cadete...</option>
+                          {cadetes.map(c => (
+                            <option key={c.id} value={c.id}>{c.name} (Saldo actual: ${c.balance || 0})</option>
+                          ))}
+                        </select>
+                        <input 
+                          required 
+                          type="number" 
+                          placeholder="Monto a recargar ($)" 
+                          value={rechargeAmount} 
+                          onChange={(e)=>setRechargeAmount(e.target.value)} 
+                          className="w-full p-2 border rounded bg-white" 
+                        />
+                        <button type="submit" className="w-full bg-blue-600 text-white py-1.5 rounded font-bold shadow">
+                          Acreditar Saldo ➕
+                        </button>
+                      </form>
+                    </div>
+
+                    <form onSubmit={handlePublishAnnouncement} className="border p-3 rounded bg-amber-50 space-y-2">
+                      <h3 className="font-bold text-amber-900 text-sm">📢 Anuncio Global</h3>
+                      <input placeholder="Texto del anuncio..." value={announcementInput} onChange={e=>setAnnouncementInput(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <div className="flex gap-2">
+                        <button type="submit" className="flex-1 bg-amber-600 text-white py-1.5 rounded font-bold">Publicar</button>
+                        {globalAnnouncement && <button type="button" onClick={handleClearAnnouncement} className="bg-red-600 text-white px-3 py-1.5 rounded font-bold">Borrar</button>}
+                      </div>
+                    </form>
                   </div>
                 )}
               </div>
             )}
 
-            {/* MODAL VENTANA DE CHAT INTERNO EN TIEMPO REAL */}
+            {/* MODAL CHAT EN TIEMPO REAL */}
             {activeChatOrder && (
               <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-3 max-w-md mx-auto">
                 <div className="bg-white rounded-xl w-full h-[85vh] flex flex-col shadow-2xl overflow-hidden">
