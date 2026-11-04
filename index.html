@@ -416,7 +416,9 @@
         if (onlineCadetesCount === 0) { alert("⚠️ No hay cadetes en línea."); return; }
         if (!store.isOpen || store.isSuspended) { alert("Negocio cerrado."); return; }
 
-        const qtyToAdd = Number(selectedQtyMap[product.id]) || 1;
+        const qtyToAdd = Number(selectedQtyMap[product.id]) !== undefined ? Number(selectedQtyMap[product.id]) : 1;
+        if (qtyToAdd <= 0) { alert("Ingresa una cantidad válida."); return; }
+
         const exists = cart.find(i => i.id === product.id);
         if (exists) {
           setCart(cart.map(i => i.id === product.id ? { ...i, quantity: i.quantity + qtyToAdd } : i));
@@ -641,7 +643,7 @@
 
                 <input 
                   type="text"
-                  placeholder="🔍 Buscar comercio o producto..."
+                  placeholder="🔍 Buscar comercio o producto (ej: Carne, Helado, Fernet)..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className={`w-full text-xs p-2.5 border-2 border-red-200 rounded-lg ${darkMode ? 'bg-gray-800 text-white' : 'bg-gray-50'}`}
@@ -660,26 +662,55 @@
                     </div>
 
                     <div className="space-y-2">
-                      {products.filter(p => p.storeId === store.id).map(prod => (
-                        <div key={prod.id} className={`flex gap-3 p-2 rounded border items-center ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white'}`}>
-                          <img src={prod.image} className="w-14 h-14 object-cover rounded bg-gray-200" alt={prod.name} />
-                          <div className="flex-1">
-                            <p className="font-bold text-sm">{prod.name}</p>
-                            <p className="text-xs font-bold text-red-500">${prod.price}</p>
+                      {products.filter(p => p.storeId === store.id).map(prod => {
+                        const currentQty = selectedQtyMap[prod.id] !== undefined ? selectedQtyMap[prod.id] : (prod.unit === 'Kg' ? '1' : (prod.unit === '100g' ? '100' : '1'));
+                        const unitLabel = prod.unit || 'Unidad';
+
+                        return (
+                          <div key={prod.id} className={`flex gap-3 p-2 rounded border items-center ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white'}`}>
+                            <img src={prod.image} className="w-14 h-14 object-cover rounded bg-gray-200" alt={prod.name} />
+                            <div className="flex-1">
+                              <p className="font-bold text-sm">{prod.name}</p>
+                              <p className="text-xs font-bold text-red-500">${prod.price} <span className="text-[10px] opacity-75">/ {unitLabel}</span></p>
+                              <p className="text-[10px] opacity-70">{prod.description}</p>
+                              
+                              {/* SELECTOR DE CANTIDAD ADAPTADO A KILOS, GRAMOS O UNIDADES */}
+                              <div className="mt-1 flex items-center gap-1.5">
+                                <span className="text-[10px] font-semibold">Cant:</span>
+                                <input 
+                                  type="number" 
+                                  step={unitLabel === 'Kg' ? '0.25' : (unitLabel === '100g' ? '50' : '1')}
+                                  min={unitLabel === '100g' ? '50' : '0.1'}
+                                  value={currentQty} 
+                                  onChange={(e) => setSelectedQtyMap({ ...selectedQtyMap, [prod.id]: e.target.value })}
+                                  className={`w-16 text-xs p-1 border rounded font-bold text-center ${darkMode ? 'bg-gray-800 text-white' : 'bg-gray-50'}`}
+                                />
+                                <span className="text-[10px]">{unitLabel}</span>
+                              </div>
+                            </div>
+
+                            <div className="text-right flex flex-col items-end gap-1">
+                              <p className="text-xs font-extrabold">
+                                ${Math.round(prod.price * (unitLabel === '100g' ? (Number(currentQty) / 100) : Number(currentQty)))}
+                              </p>
+                              <button 
+                                onClick={() => addToCart({
+                                  ...prod,
+                                  quantity: unitLabel === '100g' ? (Number(currentQty) / 100) : Number(currentQty)
+                                }, store)} 
+                                disabled={!store.isOpen || onlineCadetesCount === 0}
+                                className="text-xs px-2.5 py-1.5 rounded font-bold bg-red-600 text-white shadow disabled:bg-gray-300">
+                                + Agregar
+                              </button>
+                            </div>
                           </div>
-                          <button 
-                            onClick={() => addToCart(prod, store)} 
-                            disabled={!store.isOpen || onlineCadetesCount === 0}
-                            className="text-xs px-2.5 py-1.5 rounded font-bold bg-red-600 text-white shadow disabled:bg-gray-300">
-                            + Pedir
-                          </button>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
 
-                {/* ☁️ NUBE FLOTANTE (CARRITO MULTI-LOCAL DISCRETO) */}
+                {/* ☁️ NUBE FLOTANTE (CARRITO MULTI-LOCAL) */}
                 {cart.length > 0 && (
                   <div className="fixed bottom-16 right-4 z-50 animate-bounce">
                     <button 
@@ -701,7 +732,7 @@
                       <div className="flex justify-between items-center border-b pb-2">
                         <div>
                           <h3 className="font-extrabold text-sm">🛒 Tu Carrito (Multipedido)</h3>
-                          <p className="text-[10px] opacity-75">Puedes sumar productos de diferentes negocios.</p>
+                          <p className="text-[10px] opacity-75">Carnicería, Verdulería, Quiosco, Heladería y más en un solo envío.</p>
                         </div>
                         <button onClick={() => setIsCartOpen(false)} className="font-bold text-sm">✕</button>
                       </div>
@@ -710,7 +741,7 @@
                         {cart.map((item, idx) => (
                           <div key={idx} className="flex justify-between items-center bg-gray-50 text-gray-900 p-2 rounded text-xs shadow-sm">
                             <div className="flex-1">
-                              <p className="font-bold">{item.name} (x{item.quantity})</p>
+                              <p className="font-bold">{item.name} ({item.unit === '100g' ? `${item.quantity * 100}g` : `${item.quantity} ${item.unit || 'Unid.'}`})</p>
                               <p className="text-[10px] text-red-600 font-bold">🏪 {item.storeName}</p>
                             </div>
                             <div className="flex items-center gap-2">
@@ -744,7 +775,7 @@
                           <button type="button" onClick={handleGetLocationGPS} className="bg-blue-600 text-white font-bold px-2.5 py-1 rounded text-[10px]">📍 GPS</button>
                         </div>
 
-                        {/* SELECTOR DE MÚLTIPLES FORMAS DE PAGO */}
+                        {/* SELECTOR DE FORMAS DE PAGO */}
                         <div className="space-y-1">
                           <label className="block text-xs font-bold">Forma de Pago:</label>
                           <select 
@@ -806,10 +837,21 @@
                       ))}
                     </div>
 
+                    {/* FORMULARIO DE CARGA DE PRODUCTOS CON UNIDAD (Kg, 100g, Unidad) */}
                     <form onSubmit={handleAddProduct} className={`border p-3 rounded space-y-2 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50'}`}>
-                      <h3 className="font-bold text-sm">➕ Cargar Producto</h3>
-                      <input required placeholder="Nombre" value={prodName} onChange={e=>setProdName(e.target.value)} className={`w-full p-2 border rounded ${darkMode ? 'bg-gray-700 text-white' : ''}`} />
+                      <h3 className="font-bold text-sm">➕ Cargar Producto (Carnicería, Quiosco, Heladería...)</h3>
+                      <input required placeholder="Nombre del producto" value={prodName} onChange={e=>setProdName(e.target.value)} className={`w-full p-2 border rounded ${darkMode ? 'bg-gray-700 text-white' : ''}`} />
                       <input required type="number" placeholder="Precio ($)" value={prodPrice} onChange={e=>setProdPrice(e.target.value)} className={`w-full p-2 border rounded ${darkMode ? 'bg-gray-700 text-white' : ''}`} />
+                      
+                      <div>
+                        <label className="block text-[11px] font-bold">Unidad de Venta:</label>
+                        <select value={prodUnit} onChange={e=>setProdUnit(e.target.value)} className={`w-full p-2 border rounded font-bold ${darkMode ? 'bg-gray-700 text-white' : 'bg-white text-red-600'}`}>
+                          <option value="Unidad">Por Unidad (Ej: Bebidas, Helados, Alfajores)</option>
+                          <option value="Kg">Por Kilo (Kg) (Ej: Carnicería, Verdulería)</option>
+                          <option value="100g">Por 100 Gramos (Ej: Fiambrería, Quesos)</option>
+                        </select>
+                      </div>
+
                       <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs" />
                       <button type="submit" disabled={isCompressing} className="w-full bg-green-600 text-white py-2 rounded font-bold">Guardar Producto</button>
                     </form>
@@ -832,7 +874,7 @@
                   <div className="space-y-4">
                     <div className="bg-gray-800 text-white p-3 rounded flex justify-between items-center">
                       <span className="font-bold">{loggedCadete.name}</span>
-                      <span className="text-green-400 font-bold">Saldo: ${loggedCadete.balance || 0}</span>
+                      <span className="text-green-400 font-bold">Saldo App: ${loggedCadete.balance || 0}</span>
                     </div>
 
                     <div className={`border p-3 rounded flex justify-between items-center ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50'}`}>
