@@ -38,22 +38,19 @@
     }
     const db = firebase.firestore();
 
-    // 🔔 Alerta Sonora (Sintetizador de audio nativo sin archivos externos)
     const playBeep = () => {
       try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // Nota D5
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
         gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
         osc.connect(gain);
         gain.connect(audioCtx.destination);
         osc.start();
         osc.stop(audioCtx.currentTime + 0.3);
-      } catch (e) {
-        console.log("Audio no soportado automáticamente");
-      }
+      } catch (e) {}
     };
 
     function App() {
@@ -80,11 +77,9 @@
       const [currentTime, setCurrentTime] = useState(Date.now());
       const [isCartOpen, setIsCartOpen] = useState(false);
       
-      // 🧾 Historial del Cliente
       const [clientPhoneInput, setClientPhoneInput] = useState('');
       const [clientHistory, setClientHistory] = useState([]);
 
-      // ⭐ Calificaciones
       const [ratingStore, setRatingStore] = useState(5);
       const [ratingCadete, setRatingCadete] = useState(5);
 
@@ -103,47 +98,20 @@
         const unsubCadetes = db.collection('cadetes').onSnapshot(snapshot => {
           setCadetes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
-        
-        // 🔔 Detección de nuevos pedidos para activar alerta sonora
         const unsubOrders = db.collection('orders').onSnapshot(snapshot => {
           snapshot.docChanges().forEach(change => {
-            if (change.type === 'added') {
-              playBeep();
-            }
+            if (change.type === 'added') playBeep();
           });
           setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
-
         const unsubConfig = db.collection('config').doc('announcement').onSnapshot(doc => {
-          if (doc.exists) {
-            setGlobalAnnouncement(doc.data().text || '');
-          }
+          if (doc.exists) setGlobalAnnouncement(doc.data().text || '');
         });
 
         return () => {
           unsubStores(); unsubProducts(); unsubCadetes(); unsubOrders(); unsubConfig();
         };
       }, []);
-
-      useEffect(() => {
-        const interval = setInterval(async () => {
-          const now = Date.now();
-          for (const order of orders) {
-            if (order.status === 'pendiente' && order.createdAt) {
-              const orderTime = order.createdAt.toMillis ? order.createdAt.toMillis() : order.createdAt.seconds * 1000;
-              const diffMinutes = (now - orderTime) / (1000 * 60);
-              if (diffMinutes > 10) {
-                try {
-                  await db.collection('orders').doc(order.id).update({ status: 'cancelado_por_tiempo' });
-                } catch (err) {
-                  console.error("Error al expirar pedido:", err);
-                }
-              }
-            }
-          }
-        }, 30000);
-        return () => clearInterval(interval);
-      }, [orders]);
 
       const [adminPass, setAdminPass] = useState('');
       const [isAdminLogged, setIsAdminLogged] = useState(false);
@@ -429,21 +397,13 @@
         }
       };
 
-      // ⭐ Enviar Calificación
       const handleSubmitRating = async (orderId) => {
         try {
-          await db.collection('orders').doc(orderId).update({
-            rated: true,
-            ratingStore,
-            ratingCadete
-          });
-          alert("¡Gracias por calificar el servicio!");
-        } catch (err) {
-          alert("Error al calificar: " + err.message);
-        }
+          await db.collection('orders').doc(orderId).update({ rated: true, ratingStore, ratingCadete });
+          alert("¡Gracias por calificar!");
+        } catch (err) { alert("Error al calificar: " + err.message); }
       };
 
-      // 🧾 Buscar Historial del Cliente por Teléfono
       const searchClientHistory = (e) => {
         e.preventDefault();
         if (!clientPhoneInput.trim()) return;
@@ -463,7 +423,6 @@
         } else {
           setCart([...cart, { ...product, storeId: store.id, storeName: store.name, storeAddress: store.address, storePhone: store.phone, quantity: qtyToAdd }]);
         }
-        setIsCartOpen(true);
       };
 
       const updateCartItemQuantity = (productId, newQty) => {
@@ -528,7 +487,7 @@
       const activeCadete = activeLiveOrder ? cadetes.find(c => c.id === activeLiveOrder.cadeteId) : null;
 
       return (
-        <div className={`min-h-screen flex flex-col max-w-md mx-auto shadow-xl relative pb-24 transition-colors duration-200 ${darkMode ? 'bg-gray-900 text-gray-100' : 'bg-white text-gray-900'}`}>
+        <div className={`min-h-screen flex flex-col max-w-md mx-auto shadow-xl relative pb-28 transition-colors duration-200 ${darkMode ? 'bg-gray-900 text-gray-100' : 'bg-white text-gray-900'}`}>
           
           <header className="bg-red-600 text-white p-4 sticky top-0 z-50 flex justify-between items-center shadow">
             <div>
@@ -536,7 +495,6 @@
               <p className="text-xs text-red-100">Delivery Multi-Local</p>
             </div>
             <div className="flex items-center gap-2">
-              {/* Botón Modo Oscuro */}
               <button 
                 onClick={() => setDarkMode(!darkMode)}
                 className="bg-red-700 hover:bg-red-800 text-white px-2 py-1 rounded text-xs font-bold shadow">
@@ -578,29 +536,59 @@
                       </h3>
                     </div>
 
+                    {/* DESGLOSE ESPECÍFICO DE PAGOS */}
+                    <div className="bg-white p-3 rounded-lg border border-orange-200 text-left text-xs space-y-2">
+                      <p className="font-bold text-gray-800">Forma de Pago Seleccionada: <span className="text-red-600">{activeLiveOrder.paymentMethod}</span></p>
+                      
+                      {activeLiveOrder.paymentMethod === 'Efectivo' ? (
+                        <div className="bg-green-50 border border-green-200 p-2 rounded text-[11px] space-y-1 text-green-950">
+                          <p className="font-bold">💵 ABONAR TODO EN EFECTIVO AL CADETE:</p>
+                          <p>• Productos (para comercios): <strong>${Math.round(activeLiveOrder.subtotal)}</strong></p>
+                          <p>• Ganancia de Envío (para el cadete): <strong>${Math.round(activeLiveOrder.deliveryFee)}</strong></p>
+                          <p className="font-extrabold text-sm pt-1 border-t border-green-200">Total a entregar en mano al cadete: ${Math.round(activeLiveOrder.total)}</p>
+                        </div>
+                      ) : activeLiveOrder.paymentMethod === 'Transferencia' ? (
+                        <div className="bg-blue-50 border border-blue-200 p-2 rounded text-[11px] space-y-1 text-blue-950">
+                          <p className="font-bold">💳 PAGO MIXTO (TRANSFERENCIA + EFECTIVO):</p>
+                          <p>• <strong>Productos (Transferencia):</strong> Transfiere <strong>${Math.round(activeLiveOrder.subtotal)}</strong> directamente al alias de cada comercio (ver abajo).</p>
+                          <p>• <strong>Envío (Efectivo):</strong> Paga la ganancia del delivery de <strong>${Math.round(activeLiveOrder.deliveryFee)}</strong> en efectivo al cadete al recibir.</p>
+                        </div>
+                      ) : (
+                        <div className="bg-purple-50 border border-purple-200 p-2 rounded text-[11px] space-y-1 text-purple-950">
+                          <p className="font-bold">📱 MERCADO PAGO / QR COMPLETO:</p>
+                          <p>• Transferir el total general de <strong>${Math.round(activeLiveOrder.total)}</strong> al Alias del Administrador (o local).</p>
+                          <p>• Incluye ${Math.round(activeLiveOrder.subtotal)} para productos + ${Math.round(activeLiveOrder.deliveryFee)} de ganancia para el cadete.</p>
+                        </div>
+                      )}
+                    </div>
+
                     {activeLiveOrder.storesList && (
                       <div className="bg-white p-2.5 rounded-lg border border-orange-200 text-left text-xs space-y-2">
                         <p className="font-bold text-orange-900">🔔 Notificar al comercio por WhatsApp:</p>
-                        {activeLiveOrder.storesList.map((s, idx) => (
-                          <div key={idx} className="flex justify-between items-center border-b pb-1">
-                            <span><strong>{s.storeName}</strong></span>
-                            {s.storePhone && (
-                              <a href={`https://wa.me/549${s.storePhone}?text=Hola,%20nuevo%20pedido%20%23${activeLiveOrder.id.slice(-4).toUpperCase()}`} target="_blank" className="bg-green-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">
-                                💬 WhatsApp
-                              </a>
-                            )}
-                          </div>
-                        ))}
+                        {activeLiveOrder.storesList.map((s, idx) => {
+                          const sSubtotal = s.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+                          return (
+                            <div key={idx} className="flex justify-between items-center border-b pb-1">
+                              <div>
+                                <span><strong>{s.storeName}</strong> (${Math.round(sSubtotal)})</span>
+                                {s.alias && <p className="text-[10px] text-gray-500 font-mono">Alias: {s.alias}</p>}
+                              </div>
+                              {s.storePhone && (
+                                <a href={`https://wa.me/549${s.storePhone}?text=Hola,%20nuevo%20pedido%20%23${activeLiveOrder.id.slice(-4).toUpperCase()}%20por%20$${Math.round(sSubtotal)}`} target="_blank" className="bg-green-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">
+                                  💬 WhatsApp
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* ⭐ Sección de Calificación Post-Entrega */}
                 {activeLiveOrder && activeLiveOrder.status === 'entregado' && !activeLiveOrder.rated && (
                   <div className="bg-amber-50 border-2 border-amber-300 p-3 rounded-xl text-gray-900 text-xs space-y-3">
-                    <p className="font-extrabold text-amber-900 text-center">⭐ ¡Tu pedido fue entregado! Califica el servicio:</p>
-                    
+                    <p className="font-extrabold text-amber-900 text-center">⭐ ¡Pedido entregado! Califica el servicio:</p>
                     <div className="space-y-1">
                       <p className="font-bold">Comercio:</p>
                       <div className="flex gap-1 text-lg">
@@ -609,7 +597,6 @@
                         ))}
                       </div>
                     </div>
-
                     <div className="space-y-1">
                       <p className="font-bold">Repartidor:</p>
                       <div className="flex gap-1 text-lg">
@@ -618,16 +605,14 @@
                         ))}
                       </div>
                     </div>
-
                     <button onClick={() => handleSubmitRating(activeLiveOrder.id)} className="w-full bg-amber-600 text-white py-2 rounded font-bold shadow hover:bg-amber-700">
                       Enviar Calificación ⭐
                     </button>
                   </div>
                 )}
 
-                {/* 🧾 Consultar Historial de Pedidos */}
                 <div className={`p-3 rounded-xl border shadow-sm space-y-2 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
-                  <h3 className="font-bold text-xs">📋 ¿Quieres ver tus pedidos anteriores?</h3>
+                  <h3 className="font-bold text-xs">📋 Consultar Historial de Pedidos</h3>
                   <form onSubmit={searchClientHistory} className="flex gap-2">
                     <input 
                       type="text" 
@@ -694,42 +679,85 @@
                   </div>
                 ))}
 
+                {/* ☁️ NUBE FLOTANTE (CARRITO MULTI-LOCAL DISCRETO) */}
                 {cart.length > 0 && (
-                  <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-gray-900 text-white p-3 shadow-2xl z-40 flex justify-between items-center border-t-2 border-red-500">
-                    <div>
-                      <p className="text-xs font-bold">Subtotal: ${Math.round(cartSubtotal)}</p>
-                    </div>
-                    <button onClick={() => setIsCartOpen(true)} className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold text-xs shadow">
-                      Ver Carrito ➔
+                  <div className="fixed bottom-16 right-4 z-50 animate-bounce">
+                    <button 
+                      onClick={() => setIsCartOpen(true)}
+                      className="bg-red-600 hover:bg-red-700 text-white p-3.5 rounded-full shadow-2xl flex items-center gap-2 border-2 border-white">
+                      <span className="text-xl">🛒</span>
+                      <div className="text-left pr-1">
+                        <p className="text-[10px] leading-tight font-bold opacity-90">{uniqueStoresInCart} {uniqueStoresInCart === 1 ? 'Local' : 'Locales'}</p>
+                        <p className="text-xs font-extrabold">${Math.round(cartSubtotal)}</p>
+                      </div>
                     </button>
                   </div>
                 )}
 
+                {/* MODAL DEL CARRITO */}
                 {isCartOpen && (
                   <div className="fixed inset-0 bg-black/60 z-50 flex flex-col justify-end max-w-md mx-auto">
                     <div className={`rounded-t-2xl p-4 space-y-3 max-h-[85vh] overflow-y-auto shadow-2xl text-gray-900 ${darkMode ? 'bg-gray-800 text-white' : 'bg-white'}`}>
                       <div className="flex justify-between items-center border-b pb-2">
-                        <h3 className="font-extrabold text-sm">🛒 Carrito de Compras</h3>
+                        <div>
+                          <h3 className="font-extrabold text-sm">🛒 Tu Carrito (Multipedido)</h3>
+                          <p className="text-[10px] opacity-75">Puedes sumar productos de diferentes negocios.</p>
+                        </div>
                         <button onClick={() => setIsCartOpen(false)} className="font-bold text-sm">✕</button>
                       </div>
 
-                      <div className="space-y-2">
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
                         {cart.map((item, idx) => (
-                          <div key={idx} className="flex justify-between items-center bg-gray-50 text-gray-900 p-2 rounded text-xs">
-                            <span className="font-bold">{item.name} (x{item.quantity})</span>
-                            <span className="font-extrabold text-red-600">${Math.round(item.price * item.quantity)}</span>
+                          <div key={idx} className="flex justify-between items-center bg-gray-50 text-gray-900 p-2 rounded text-xs shadow-sm">
+                            <div className="flex-1">
+                              <p className="font-bold">{item.name} (x{item.quantity})</p>
+                              <p className="text-[10px] text-red-600 font-bold">🏪 {item.storeName}</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-red-600">${Math.round(item.price * item.quantity)}</span>
+                              <button onClick={() => updateCartItemQuantity(item.id, 0)} className="text-red-500 font-bold text-xs">🗑️</button>
+                            </div>
                           </div>
                         ))}
                       </div>
 
-                      <form onSubmit={handleCreateOrder} className="space-y-2 pt-2">
+                      <div className="bg-gray-100 p-2.5 rounded text-xs space-y-1 text-gray-800">
+                        <div className="flex justify-between">
+                          <span>Subtotal Productos:</span>
+                          <span className="font-bold">${Math.round(cartSubtotal)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Envío ({uniqueStoresInCart} paradas):</span>
+                          <span className="font-bold">${calculatedDeliveryFee}</span>
+                        </div>
+                        <div className="flex justify-between font-extrabold text-sm pt-1 border-t">
+                          <span>TOTAL GENERAL:</span>
+                          <span className="text-red-600">${Math.round(cartSubtotal + calculatedDeliveryFee)}</span>
+                        </div>
+                      </div>
+
+                      <form onSubmit={handleCreateOrder} className="space-y-2.5 pt-1">
                         <input required placeholder="Tu Nombre Completo" value={custName} onChange={e=>setCustName(e.target.value)} className="w-full text-xs p-2 border rounded text-gray-900" />
                         <input required placeholder="Teléfono de Contacto" value={custPhone} onChange={e=>setCustPhone(e.target.value)} className="w-full text-xs p-2 border rounded text-gray-900" />
                         <div className="flex gap-2">
                           <input required placeholder="Dirección exacta" value={custAddress} onChange={e=>setCustAddress(e.target.value)} className="flex-1 text-xs p-2 border rounded text-gray-900" />
                           <button type="button" onClick={handleGetLocationGPS} className="bg-blue-600 text-white font-bold px-2.5 py-1 rounded text-[10px]">📍 GPS</button>
                         </div>
-                        <button type="submit" className="w-full bg-red-600 text-white py-2 rounded font-bold text-xs shadow">
+
+                        {/* SELECTOR DE MÚLTIPLES FORMAS DE PAGO */}
+                        <div className="space-y-1">
+                          <label className="block text-xs font-bold">Forma de Pago:</label>
+                          <select 
+                            value={paymentMethod} 
+                            onChange={e => setPaymentMethod(e.target.value)}
+                            className="w-full text-xs p-2 border rounded font-bold text-red-600 bg-white">
+                            <option value="Efectivo">💵 Efectivo (Todo al cadete al recibir)</option>
+                            <option value="Transferencia">💳 Transferencia (Productos al comercio + Envío al cadete)</option>
+                            <option value="Mercado Pago">📱 Mercado Pago / QR (Pago completo anticipado)</option>
+                          </select>
+                        </div>
+
+                        <button type="submit" className="w-full bg-red-600 text-white py-2.5 rounded font-bold text-xs shadow hover:bg-red-700">
                           Confirmar Pedido 🚀
                         </button>
                       </form>
@@ -773,6 +801,7 @@
                             <span className="text-red-500">${Math.round(o.total)}</span>
                           </div>
                           <p>Cliente: {o.customerName}</p>
+                          <p>Pago: <strong>{o.paymentMethod}</strong></p>
                         </div>
                       ))}
                     </div>
@@ -819,9 +848,10 @@
                         <div key={o.id} className={`border-2 border-blue-200 p-3 rounded-lg space-y-2 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50'}`}>
                           <div className="flex justify-between font-bold">
                             <span>📦 Pedido #{o.id.slice(-4).toUpperCase()}</span>
-                            <span className="text-green-600">Envío: ${Math.round(o.deliveryFee || BASE_DELIVERY_FEE)}</span>
+                            <span className="text-green-600">Ganancia Envío: ${Math.round(o.deliveryFee || BASE_DELIVERY_FEE)}</span>
                           </div>
                           <p>Cliente: {o.customerName} ({o.address})</p>
+                          <p>Forma de Pago: <strong className="text-red-500">{o.paymentMethod}</strong></p>
                           
                           {o.status === 'pendiente' && (
                             <button onClick={()=>handleAcceptOrder(o.id)} className="w-full bg-green-700 text-white py-2 rounded font-bold">
