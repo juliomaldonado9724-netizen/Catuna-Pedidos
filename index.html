@@ -39,9 +39,8 @@
     const db = firebase.firestore();
 
     function App() {
-      // Control de pestañas de los 4 Pilares
       const [currentTab, setCurrentTab] = useState('cliente');
-
+      const APP_FEE = 300; 
       const BASE_DELIVERY_FEE = 1500; 
 
       // Estados de Firestore
@@ -51,7 +50,7 @@
       const [orders, setOrders] = useState([]);
       const [globalAnnouncement, setGlobalAnnouncement] = useState('');
 
-      // Cliente: Buscador y Carrito
+      // Cliente
       const [searchTerm, setSearchTerm] = useState('');
       const [cart, setCart] = useState([]);
       const [isCartOpen, setIsCartOpen] = useState(false);
@@ -61,7 +60,42 @@
       const [custCoords, setCustCoords] = useState(null);
       const [lastOrderId, setLastOrderId] = useState(null);
 
-      // Cargar datos en tiempo real desde Firebase
+      // Chat en Vivo
+      const [activeChatOrder, setActiveChatOrder] = useState(null);
+      const [chatMessages, setChatMessages] = useState([]);
+      const [newMessageText, setNewMessageText] = useState('');
+      const chatEndRef = useRef(null);
+
+      // Comercio
+      const [loginUser, setLoginUser] = useState('');
+      const [loginPass, setLoginPass] = useState('');
+      const [loggedStore, setLoggedStore] = useState(null);
+      const [prodName, setProdName] = useState('');
+      const [prodPrice, setProdPrice] = useState('');
+      const [prodDesc, setProdDesc] = useState('');
+      const [prodIsPromo, setProdIsPromo] = useState(false);
+      const [prodPromoHours, setProdPromoHours] = useState('24');
+      const [prodImg, setProdImg] = useState('');
+      const [isCompressing, setIsCompressing] = useState(false);
+
+      // Cadete
+      const [loggedCadete, setLoggedCadete] = useState(null);
+
+      // Admin
+      const [adminPass, setAdminPass] = useState('');
+      const [isAdminLogged, setIsAdminLogged] = useState(false);
+      const [newStoreName, setNewStoreName] = useState('');
+      const [newStoreAddress, setNewStoreAddress] = useState('');
+      const [newStoreUser, setNewStoreUser] = useState('');
+      const [newStorePass, setNewStorePass] = useState('');
+      const [newCadeteName, setNewCadeteName] = useState('');
+      const [newCadeteUser, setNewCadeteUser] = useState('');
+      const [newCadetePass, setNewCadetePass] = useState('');
+      const [selectedCadeteId, setSelectedCadeteId] = useState('');
+      const [rechargeAmount, setRechargeAmount] = useState('');
+      const [announcementInput, setAnnouncementInput] = useState('');
+
+      // Sincronización en tiempo real con Firebase
       useEffect(() => {
         const unsubStores = db.collection('stores').onSnapshot(snapshot => {
           setStores(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -84,7 +118,46 @@
         };
       }, []);
 
-      // Obtener ubicación GPS exacta
+      // Chat Listener
+      useEffect(() => {
+        if (!activeChatOrder) return;
+        const unsubChat = db.collection('orders').doc(activeChatOrder.id)
+          .collection('messages').orderBy('createdAt', 'asc')
+          .onSnapshot(snapshot => {
+            setChatMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          });
+        return () => unsubChat();
+      }, [activeChatOrder]);
+
+      useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, [chatMessages]);
+
+      const sendMessage = async (e) => {
+        e.preventDefault();
+        if (!newMessageText.trim() || !activeChatOrder) return;
+
+        let senderRole = 'Cliente';
+        let senderName = activeChatOrder.customerName || 'Cliente';
+
+        if (currentTab === 'comercio' && loggedStore) {
+          senderRole = 'Comercio';
+          senderName = loggedStore.name;
+        } else if (currentTab === 'cadete' && loggedCadete) {
+          senderRole = 'Cadete';
+          senderName = loggedCadete.name;
+        }
+
+        try {
+          await db.collection('orders').doc(activeChatOrder.id).collection('messages').add({
+            senderRole, senderName, text: newMessageText.trim(),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          setNewMessageText('');
+        } catch (err) { alert("Error al enviar mensaje: " + err.message); }
+      };
+
+      // GPS Cliente
       const handleGetLocationGPS = () => {
         if (!navigator.geolocation) { alert("Tu navegador no soporta geolocalización."); return; }
         navigator.geolocation.getCurrentPosition(
@@ -92,17 +165,17 @@
             const lat = pos.coords.latitude, lng = pos.coords.longitude;
             setCustCoords({ lat, lng });
             setCustAddress(`📍 GPS exacto (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
-            alert("Ubicación GPS obtenida con éxito.");
+            alert("Ubicación GPS obtenida.");
           },
-          () => alert("No se pudo obtener la ubicación. Verifica los permisos de GPS."),
+          () => alert("No se pudo obtener la ubicación GPS."),
           { enableHighAccuracy: true }
         );
       };
 
-      // Agregar al carrito
+      // Carrito
       const addToCart = (product, store) => {
         const onlineCadetesCount = cadetes.filter(c => c.isOnline && !c.isSuspended).length;
-        if (onlineCadetesCount === 0) { alert("⚠️ No hay cadetes en línea disponibles en este momento."); return; }
+        if (onlineCadetesCount === 0) { alert("⚠️ No hay cadetes en línea disponibles."); return; }
         if (!store.isOpen || store.isSuspended) { alert("Este negocio se encuentra cerrado."); return; }
 
         const exists = cart.find(i => i.id === product.id);
@@ -118,7 +191,6 @@
       const uniqueStoresInCart = [...new Set(cart.map(i => i.storeId))].length;
       const calculatedDeliveryFee = BASE_DELIVERY_FEE + (Math.max(0, uniqueStoresInCart - 1) * 500);
 
-      // Crear Pedido en Firebase
       const handleCreateOrder = async (e) => {
         e.preventDefault();
         if (cart.length === 0) return;
@@ -143,7 +215,7 @@
             storesInvolved: storesInvolvedIds, storesList, customerName: custName, customerPhone: custPhone,
             address: custAddress, coords: custCoords || null, paymentMethod: 'Efectivo', items: cart,
             deliveryFee: calculatedDeliveryFee, subtotal: cartSubtotal, total: cartSubtotal + calculatedDeliveryFee,
-            status: 'pendiente', cadeteId: null, storeSettled: false, rated: false,
+            status: 'pendiente', cadeteId: null, storeSettled: false,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           });
 
@@ -151,6 +223,176 @@
           setCart([]); setIsCartOpen(false); setCustName(''); setCustPhone(''); setCustAddress(''); setCustCoords(null);
           alert("¡Pedido enviado con éxito!");
         } catch (err) { alert("Error al registrar pedido: " + err.message); }
+      };
+
+      // Comercio Logica
+      const handleStoreLogin = (e) => {
+        e.preventDefault();
+        const found = stores.find(s => s.user === loginUser && s.pass === loginPass);
+        if (found) {
+          if (found.isSuspended) { alert("⚠️ Tu comercio está suspendido."); return; }
+          setLoggedStore(found);
+        } else { alert("Usuario o contraseña incorrectos"); }
+      };
+
+      const toggleStoreOpenStatus = async () => {
+        if (!loggedStore) return;
+        const updatedStatus = !loggedStore.isOpen;
+        try {
+          await db.collection('stores').doc(loggedStore.id).update({ isOpen: updatedStatus });
+          setLoggedStore({ ...loggedStore, isOpen: updatedStatus });
+        } catch (err) { alert("Error: " + err.message); }
+      };
+
+      const handleImageUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setIsCompressing(true);
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 500;
+            const MAX_HEIGHT = 500;
+            let width = img.width, height = img.height;
+            if (width > height) {
+              if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+            } else {
+              if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+            }
+            canvas.width = width; canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            setProdImg(canvas.toDataURL('image/jpeg', 0.7));
+            setIsCompressing(false);
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      };
+
+      const handleAddProduct = async (e) => {
+        e.preventDefault();
+        if (!loggedStore || isCompressing) return;
+        let promoExpiresAt = prodIsPromo ? Date.now() + ((Number(prodPromoHours) || 24) * 3600000) : null;
+        try {
+          await db.collection('products').add({
+            storeId: loggedStore.id, name: prodName, price: Number(prodPrice) || 0,
+            isPromo: prodIsPromo, promoExpiresAt, description: prodDesc,
+            image: prodImg || 'https://via.placeholder.com/150',
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          setProdName(''); setProdPrice(''); setProdDesc(''); setProdIsPromo(false); setProdPromoHours('24'); setProdImg('');
+          alert("Producto / Oferta guardada con éxito.");
+        } catch (err) { alert("Error: " + err.message); }
+      };
+
+      const handleDeleteProduct = async (id, name) => {
+        if (confirm(`¿Eliminar "${name}" del catálogo?`)) {
+          try { await db.collection('products').doc(id).delete(); alert("Producto eliminado."); } 
+          catch (err) { alert("Error: " + err.message); }
+        }
+      };
+
+      // Cadete Logica
+      const handleCadeteLogin = (e) => {
+        e.preventDefault();
+        const found = cadetes.find(c => c.user === loginUser && c.pass === loginPass);
+        if (found) {
+          if (found.isSuspended) { alert("⚠️ Tu cuenta está suspendida."); return; }
+          setLoggedCadete(found);
+        } else { alert("Usuario o contraseña incorrectos"); }
+      };
+
+      const toggleCadeteOnlineStatus = async () => {
+        if (!loggedCadete) return;
+        const updatedStatus = !loggedCadete.isOnline;
+        try {
+          await db.collection('cadetes').doc(loggedCadete.id).update({ isOnline: updatedStatus });
+          setLoggedCadete({ ...loggedCadete, isOnline: updatedStatus });
+        } catch (err) { alert("Error: " + err.message); }
+      };
+
+      const handleAcceptOrder = async (orderId) => {
+        if (!loggedCadete || !loggedCadete.isOnline) { alert("Debes estar en línea."); return; }
+        if ((Number(loggedCadete.balance) || 0) < APP_FEE) { alert(`Saldo insuficiente (Mínimo $${APP_FEE}).`); return; }
+        try {
+          const newBalance = (Number(loggedCadete.balance) || 0) - APP_FEE;
+          await db.collection('cadetes').doc(loggedCadete.id).update({ balance: newBalance });
+          await db.collection('orders').doc(orderId).update({ status: 'tomado_por_cadete', cadeteId: loggedCadete.id });
+          setLoggedCadete({ ...loggedCadete, balance: newBalance });
+          alert("¡Envío aceptado!");
+        } catch (err) { alert("Error: " + err.message); }
+      };
+
+      const handleMarkAsOnTheWay = async (orderId) => {
+        try { await db.collection('orders').doc(orderId).update({ status: 'en_camino' }); alert("Pedido en camino."); } 
+        catch (err) { alert("Error: " + err.message); }
+      };
+
+      const handleCompleteOrder = async (orderId) => {
+        try { await db.collection('orders').doc(orderId).update({ status: 'entregado' }); alert("¡Pedido entregado!"); } 
+        catch (err) { alert("Error: " + err.message); }
+      };
+
+      // Admin Logica
+      const handleAdminLogin = (e) => {
+        e.preventDefault();
+        if (adminPass === 'Aithana2411') setIsAdminLogged(true);
+        else alert("Contraseña de Admin incorrecta");
+      };
+
+      const handleCreateStore = async (e) => {
+        e.preventDefault();
+        try {
+          await db.collection('stores').add({
+            name: newStoreName, address: newStoreAddress, phone: 'Sin Teléfono', alias: 'Sin Alias', titular: 'Sin Titular',
+            hours: '08:00 a 23:00 hs', isOpen: true, isSuspended: false, user: newStoreUser, pass: newStorePass,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          setNewStoreName(''); setNewStoreAddress(''); setNewStoreUser(''); setNewStorePass('');
+          alert("¡Comercio creado con éxito desde tu panel!");
+        } catch (err) { alert("Error: " + err.message); }
+      };
+
+      const handleCreateCadete = async (e) => {
+        e.preventDefault();
+        try {
+          await db.collection('cadetes').add({
+            name: newCadeteName, phone: 'Sin Teléfono', vehicle: 'Moto', user: newCadeteUser, pass: newCadetePass,
+            balance: 0, isOnline: true, isSuspended: false,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          setNewCadeteName(''); setNewCadeteUser(''); setNewCadetePass('');
+          alert("¡Cadete creado con éxito desde tu panel!");
+        } catch (err) { alert("Error: " + err.message); }
+      };
+
+      const handleRechargeBalance = async (e) => {
+        e.preventDefault();
+        const amount = Number(rechargeAmount);
+        if (!selectedCadeteId || amount <= 0) return;
+        const cadeteDoc = cadetes.find(c => c.id === selectedCadeteId);
+        if (!cadeteDoc) return;
+        try {
+          await db.collection('cadetes').doc(selectedCadeteId).update({ balance: (Number(cadeteDoc.balance) || 0) + amount });
+          setRechargeAmount('');
+          alert("¡Saldo acreditado al cadete correctamente!");
+        } catch (err) { alert("Error: " + err.message); }
+      };
+
+      const handlePublishAnnouncement = async (e) => {
+        e.preventDefault();
+        try {
+          await db.collection('config').doc('announcement').set({ text: announcementInput });
+          setAnnouncementInput(''); alert("Anuncio publicado.");
+        } catch (err) { alert("Error: " + err.message); }
+      };
+
+      const handleClearAnnouncement = async () => {
+        try { await db.collection('config').doc('announcement').set({ text: '' }); alert("Anuncio eliminado."); } 
+        catch (err) { alert("Error: " + err.message); }
       };
 
       const filteredStores = stores.filter(store => {
@@ -171,7 +413,7 @@
           <header className="bg-red-600 text-white p-4 sticky top-0 z-45 flex justify-between items-center shadow">
             <div>
               <h1 className="text-xl font-bold">Catuna Pedidos</h1>
-              <p className="text-xs text-red-100">Pilar 1: App del Cliente (MVP)</p>
+              <p className="text-xs text-red-100">Ecosistema Completo de 4 Pilares</p>
             </div>
             <span className="text-xs bg-red-700 px-2 py-1 rounded font-bold uppercase">{currentTab}</span>
           </header>
@@ -191,11 +433,15 @@
           </nav>
 
           <main className="flex-1 p-4 overflow-y-auto">
+            {/* PILAR 1: CLIENTE */}
             {currentTab === 'cliente' && (
               <div className="space-y-4">
                 {activeLiveOrder && activeLiveOrder.status !== 'entregado' && (
                   <div className="p-3 bg-orange-50 border-2 border-orange-400 rounded-lg text-center space-y-2">
-                    <p className="font-bold text-xs text-orange-900">Estado de tu pedido actual: <span className="uppercase text-red-600">{activeLiveOrder.status}</span></p>
+                    <p className="font-bold text-xs text-orange-900">Estado de tu pedido: <span className="uppercase text-red-600">{activeLiveOrder.status}</span></p>
+                    <button onClick={() => setActiveChatOrder(activeLiveOrder)} className="w-full bg-indigo-600 text-white py-1.5 rounded font-bold text-xs">
+                      💬 Abrir Chat del Pedido (En Vivo)
+                    </button>
                   </div>
                 )}
 
@@ -228,7 +474,11 @@
                         <div key={prod.id} className="flex gap-3 bg-white p-2 rounded border items-center">
                           <img src={prod.image} className="w-14 h-14 object-cover rounded bg-gray-200" alt={prod.name} />
                           <div className="flex-1">
-                            <p className="font-bold text-sm text-gray-800">{prod.name}</p>
+                            <div className="flex items-center gap-1">
+                              <p className="font-bold text-sm text-gray-800">{prod.name}</p>
+                              {prod.isPromo && <span className="bg-amber-500 text-white text-[9px] px-1 rounded font-extrabold">OFERTA</span>}
+                            </div>
+                            <p className="text-xs text-gray-500">{prod.description}</p>
                             <p className="text-xs font-bold text-red-600">${prod.price}</p>
                           </div>
                           <button 
@@ -288,12 +538,264 @@
               </div>
             )}
 
-            {currentTab !== 'cliente' && (
-              <div className="text-center py-20 text-gray-400">
-                <p className="text-sm font-bold">Pilar en construcción para este paso.</p>
-                <p className="text-xs">Lo habilitaremos en el siguiente paso de la guía.</p>
+            {/* PILAR 2: COMERCIO */}
+            {currentTab === 'comercio' && (
+              <div className="space-y-4 text-xs">
+                {!loggedStore ? (
+                  <form onSubmit={handleStoreLogin} className="border p-4 rounded bg-gray-50 space-y-3">
+                    <h2 className="font-bold text-sm text-gray-800">Acceso Comercio</h2>
+                    <p className="text-[10px] text-gray-500">Ingresa con el usuario y contraseña que creaste desde el Panel de Admin.</p>
+                    <input required placeholder="Usuario" value={loginUser} onChange={e=>setLoginUser(e.target.value)} className="w-full p-2 border rounded" />
+                    <input required type="password" placeholder="Contraseña" value={loginPass} onChange={e=>setLoginPass(e.target.value)} className="w-full p-2 border rounded" />
+                    <button type="submit" className="w-full bg-red-600 text-white py-2 rounded font-bold">Entrar</button>
+                  </form>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center bg-gray-100 p-3 rounded border">
+                      <div>
+                        <span className="font-bold text-gray-800 text-sm">{loggedStore.name}</span>
+                        <p className="text-[10px] text-gray-500">Estado: <strong className={loggedStore.isOpen ? 'text-green-600':'text-red-600'}>{loggedStore.isOpen ? 'ABIERTO' : 'CERRADO'}</strong></p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={toggleStoreOpenStatus} className={`px-2.5 py-1.5 rounded font-bold text-white shadow ${loggedStore.isOpen ? 'bg-red-600' : 'bg-green-600'}`}>
+                          {loggedStore.isOpen ? 'Cerrar' : 'Abrir'}
+                        </button>
+                        <button onClick={() => setLoggedStore(null)} className="bg-gray-700 text-white px-2 py-1 rounded font-bold">Salir</button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h3 className="font-bold text-gray-800">Pedidos Activos:</h3>
+                      {orders.filter(o => (o.storeId === loggedStore.id || (o.storesInvolved && o.storesInvolved.includes(loggedStore.id))) && o.status !== 'entregado').map(o => (
+                        <div key={o.id} className="border p-3 rounded-lg bg-white shadow-sm space-y-2">
+                          <div className="flex justify-between font-bold">
+                            <span>Pedido #{o.id.slice(-4).toUpperCase()}</span>
+                            <span className="text-red-600">${Math.round(o.total)}</span>
+                          </div>
+                          <p>Cliente: {o.customerName}</p>
+                          <button onClick={() => setActiveChatOrder(o)} className="w-full bg-indigo-600 text-white py-1.5 rounded font-bold flex items-center justify-center gap-1">
+                            💬 Abrir Chat del Pedido
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <form onSubmit={handleAddProduct} className="border p-3 rounded bg-gray-50 space-y-2">
+                      <h3 className="font-bold text-gray-800 text-sm">➕ Cargar Producto / Oferta</h3>
+                      <input required placeholder="Nombre del Producto" value={prodName} onChange={e=>setProdName(e.target.value)} className="w-full p-2 border rounded" />
+                      <input required type="number" placeholder="Precio ($)" value={prodPrice} onChange={e=>setProdPrice(e.target.value)} className="w-full p-2 border rounded" />
+                      <input placeholder="Descripción corta" value={prodDesc} onChange={e=>setProdDesc(e.target.value)} className="w-full p-2 border rounded" />
+
+                      <div className="bg-amber-50 p-2.5 rounded border border-amber-200 space-y-2">
+                        <label className="flex items-center gap-2 font-bold text-amber-900 cursor-pointer">
+                          <input type="checkbox" checked={prodIsPromo} onChange={e=>setProdIsPromo(e.target.checked)} className="w-4 h-4" />
+                          <span>¿Es Oferta / Promoción Especial?</span>
+                        </label>
+                        {prodIsPromo && (
+                          <div>
+                            <p className="text-[10px] text-amber-800 font-bold">Duración:</p>
+                            <select value={prodPromoHours} onChange={e=>setProdPromoHours(e.target.value)} className="w-full p-1.5 border rounded bg-white font-bold">
+                              <option value="6">6 Horas</option>
+                              <option value="24">24 Horas</option>
+                              <option value="48">48 Horas</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-600">Foto:</p>
+                        <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs" />
+                      </div>
+
+                      <button type="submit" disabled={isCompressing} className="w-full bg-green-600 text-white py-2 rounded font-bold shadow">
+                        {isCompressing ? 'Procesando...' : 'Guardar Producto'}
+                      </button>
+                    </form>
+
+                    <div className="space-y-2 pt-2">
+                      <h3 className="font-bold text-gray-800">Mi Catálogo:</h3>
+                      {products.filter(p => p.storeId === loggedStore.id).map(p => (
+                        <div key={p.id} className="flex justify-between items-center bg-white p-2 rounded border">
+                          <div>
+                            <p className="font-bold">{p.name} {p.isPromo && <span className="text-[9px] bg-amber-500 text-white px-1 rounded">OFERTA</span>}</p>
+                            <p className="text-gray-500">${p.price}</p>
+                          </div>
+                          <button onClick={() => handleDeleteProduct(p.id, p.name)} className="bg-red-500 text-white px-2 py-1 rounded font-bold text-[10px]">Borrar</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
+
+            {/* PILAR 3: CADETE */}
+            {currentTab === 'cadete' && (
+              <div className="space-y-4 text-xs">
+                {!loggedCadete ? (
+                  <form onSubmit={handleCadeteLogin} className="border p-4 rounded bg-gray-50 space-y-3">
+                    <h2 className="font-bold text-sm text-gray-800">Acceso Repartidor (Cadete)</h2>
+                    <p className="text-[10px] text-gray-500">Ingresa con las credenciales creadas desde el Panel de Admin.</p>
+                    <input required placeholder="Usuario" value={loginUser} onChange={e=>setLoginUser(e.target.value)} className="w-full p-2 border rounded" />
+                    <input required type="password" placeholder="Contraseña" value={loginPass} onChange={e=>setLoginPass(e.target.value)} className="w-full p-2 border rounded" />
+                    <button type="submit" className="w-full bg-red-600 text-white py-2 rounded font-bold">Entrar</button>
+                  </form>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="bg-gray-800 text-white p-3 rounded flex justify-between items-center">
+                      <span className="font-bold">{loggedCadete.name}</span>
+                      <span className="text-green-400 font-bold">Saldo: ${loggedCadete.balance || 0}</span>
+                    </div>
+
+                    <div className="border p-3 rounded bg-gray-50 flex justify-between items-center">
+                      <span>Estado:</span>
+                      <button onClick={toggleCadeteOnlineStatus} className={`px-3 py-1 rounded text-white font-bold ${loggedCadete.isOnline ? 'bg-green-600' : 'bg-red-600'}`}>
+                        {loggedCadete.isOnline ? '🟢 EN LÍNEA' : '🔴 DESCONECTADO'}
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h3 className="font-bold text-gray-800">Envíos Disponibles:</h3>
+                      {orders.filter(o => o.status === 'pendiente' || (o.cadeteId === loggedCadete.id && o.status !== 'entregado')).map(o => (
+                        <div key={o.id} className="border-2 border-blue-200 p-3 rounded-lg bg-gray-50 space-y-2">
+                          <div className="flex justify-between font-bold">
+                            <span>📦 Pedido #{o.id.slice(-4).toUpperCase()}</span>
+                            <span className="text-green-700">Envío: ${Math.round(o.deliveryFee || BASE_DELIVERY_FEE)}</span>
+                          </div>
+                          <p>Cliente: {o.customerName} ({o.address})</p>
+                          
+                          <button onClick={() => setActiveChatOrder(o)} className="w-full bg-indigo-600 text-white py-1.5 rounded font-bold flex items-center justify-center gap-1">
+                            💬 Chat en Vivo del Pedido
+                          </button>
+
+                          {o.status === 'pendiente' && (
+                            <button onClick={()=>handleAcceptOrder(o.id)} className="w-full bg-green-700 text-white py-2 rounded font-bold">
+                              Aceptar Envío (-${APP_FEE})
+                            </button>
+                          )}
+                          {o.status === 'tomado_por_cadete' && (
+                            <button onClick={()=>handleMarkAsOnTheWay(o.id)} className="w-full bg-green-600 text-white py-2 rounded font-bold">
+                              En Camino 🛵
+                            </button>
+                          )}
+                          {o.status === 'en_camino' && (
+                            <button onClick={()=>handleCompleteOrder(o.id)} className="w-full bg-orange-500 text-white py-2 rounded font-bold">
+                              Marcar Entregado ✅
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* PILAR 4: ADMIN (CREACIÓN DE USUARIOS, SALDOS Y ANUNCIOS) */}
+            {currentTab === 'admin' && (
+              <div className="space-y-4 text-xs">
+                {!isAdminLogged ? (
+                  <form onSubmit={handleAdminLogin} className="border p-4 rounded bg-gray-50 space-y-3">
+                    <h2 className="font-bold text-sm text-gray-800">Panel de Administración Central</h2>
+                    <input required type="password" placeholder="Contraseña (Aithana2411)" value={adminPass} onChange={e=>setAdminPass(e.target.value)} className="w-full p-2 border rounded" />
+                    <button type="submit" className="w-full bg-gray-800 text-white py-2 rounded font-bold">Entrar</button>
+                  </form>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center bg-gray-800 text-white p-2 rounded">
+                      <span className="font-bold">Panel de Control General</span>
+                      <button onClick={()=>setIsAdminLogged(false)} className="text-red-300 font-bold underline">Salir</button>
+                    </div>
+
+                    {/* Crear Comercio y Contraseña */}
+                    <form onSubmit={handleCreateStore} className="border p-3 rounded bg-red-50 space-y-2">
+                      <h3 className="font-bold text-red-900 text-sm">🏪 Crear Comercio (Usuario y Clave)</h3>
+                      <input required placeholder="Nombre del Negocio" value={newStoreName} onChange={e=>setNewStoreName(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <input required placeholder="Dirección" value={newStoreAddress} onChange={e=>setNewStoreAddress(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <input required placeholder="Usuario para el Comercio" value={newStoreUser} onChange={e=>setNewStoreUser(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <input required type="password" placeholder="Contraseña" value={newStorePass} onChange={e=>setNewStorePass(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <button type="submit" className="w-full bg-red-600 text-white py-2 rounded font-bold">Registrar Comercio</button>
+                    </form>
+
+                    {/* Crear Cadete y Contraseña */}
+                    <form onSubmit={handleCreateCadete} className="border p-3 rounded bg-blue-50 space-y-2">
+                      <h3 className="font-bold text-blue-900 text-sm">🛵 Crear Cadete (Usuario y Clave)</h3>
+                      <input required placeholder="Nombre del Repartidor" value={newCadeteName} onChange={e=>setNewCadeteName(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <input required placeholder="Usuario para el Cadete" value={newCadeteUser} onChange={e=>setNewCadeteUser(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <input required type="password" placeholder="Contraseña" value={newCadetePass} onChange={e=>setNewCadetePass(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold">Registrar Cadete</button>
+                    </form>
+
+                    {/* Recargar Saldo */}
+                    <div className="border p-3 rounded bg-blue-50 border-blue-200 space-y-3">
+                      <h3 className="font-bold text-blue-900 text-sm">💰 Cargar Saldo a Cadete</h3>
+                      <form onSubmit={handleRechargeBalance} className="space-y-2">
+                        <select required value={selectedCadeteId} onChange={(e)=>setSelectedCadeteId(e.target.value)} className="w-full p-2 border rounded bg-white text-xs font-bold">
+                          <option value="">Seleccionar Repartidor...</option>
+                          {cadetes.map(c => (
+                            <option key={c.id} value={c.id}>{c.name} (Saldo: ${c.balance || 0})</option>
+                          ))}
+                        </select>
+                        <input required type="number" placeholder="Monto a acreditar ($)" value={rechargeAmount} onChange={(e)=>setRechargeAmount(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                        <button type="submit" className="w-full bg-blue-600 text-white py-1.5 rounded font-bold shadow">Acreditar Saldo ➕</button>
+                      </form>
+                    </div>
+
+                    {/* Anuncio Global */}
+                    <form onSubmit={handlePublishAnnouncement} className="border p-3 rounded bg-amber-50 space-y-2">
+                      <h3 className="font-bold text-amber-900 text-sm">📢 Anuncio Global</h3>
+                      <input placeholder="Mensaje para los clientes..." value={announcementInput} onChange={e=>setAnnouncementInput(e.target.value)} className="w-full p-2 border rounded bg-white" />
+                      <div className="flex gap-2">
+                        <button type="submit" className="flex-1 bg-amber-600 text-white py-1.5 rounded font-bold">Publicar</button>
+                        {globalAnnouncement && <button type="button" onClick={handleClearAnnouncement} className="bg-red-600 text-white px-3 py-1.5 rounded font-bold">Borrar</button>}
+                      </div>
+                    </form>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* MODAL DE CHAT EN VIVO */}
+            {activeChatOrder && (
+              <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-3 max-w-md mx-auto">
+                <div className="bg-white rounded-xl w-full h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+                  <div className="bg-indigo-700 text-white p-3 flex justify-between items-center">
+                    <div>
+                      <h3 className="font-extrabold text-sm">💬 Chat Pedido #{activeChatOrder.id.slice(-4).toUpperCase()}</h3>
+                      <p className="text-[10px] text-indigo-200">Comunicación en tiempo real</p>
+                    </div>
+                    <button onClick={() => setActiveChatOrder(null)} className="text-white font-extrabold text-sm bg-indigo-900 px-2.5 py-1 rounded">✕</button>
+                  </div>
+
+                  <div className="flex-1 p-3 overflow-y-auto space-y-2 bg-gray-50 text-xs">
+                    {chatMessages.length === 0 ? (
+                      <p className="text-center text-gray-400 italic py-10">Escribe el primer mensaje...</p>
+                    ) : (
+                      chatMessages.map(msg => (
+                        <div key={msg.id} className={`p-2 rounded-lg max-w-[80%] ${msg.senderRole === 'Cliente' ? 'bg-blue-100 text-blue-950 ml-auto' : msg.senderRole === 'Comercio' ? 'bg-red-100 text-red-950' : 'bg-green-100 text-green-950'}`}>
+                          <p className="font-extrabold text-[10px] opacity-75">{msg.senderName} ({msg.senderRole})</p>
+                          <p className="text-xs font-semibold mt-0.5">{msg.text}</p>
+                        </div>
+                      ))
+                    )}
+                    <div ref={chatEndRef} />
+                  </div>
+
+                  <form onSubmit={sendMessage} className="p-2 border-t flex gap-2 bg-white">
+                    <input 
+                      type="text" 
+                      placeholder="Escribe un mensaje..." 
+                      value={newMessageText} 
+                      onChange={e=>setNewMessageText(e.target.value)} 
+                      className="flex-1 p-2 text-xs border rounded focus:outline-none focus:border-indigo-600"
+                    />
+                    <button type="submit" className="bg-indigo-600 text-white font-extrabold px-4 py-2 rounded text-xs">Enviar</button>
+                  </form>
+                </div>
+              </div>
+            )}
+
           </main>
         </div>
       );
